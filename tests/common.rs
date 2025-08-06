@@ -1,13 +1,15 @@
-use assert_json_diff::{CompareMode, Config, assert_json_matches_no_panic};
+use assert_json_diff::{assert_json_matches_no_panic, CompareMode, Config};
+use lazy_static::lazy_static;
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use serde_json::Value;
 use std::env::consts::EXE_EXTENSION;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{LazyLock, Once};
+use std::sync::Once;
 use std::time::Duration;
 
 // The code was originally written by Jack O'Connor (@oconnor663)
@@ -40,7 +42,7 @@ fn build_and_find_path(name: &str) -> PathBuf {
     static CARGO_BUILD_ONCE: Once = Once::new();
     CARGO_BUILD_ONCE.call_once(|| {
         let mut build_command = Command::new("cargo");
-        build_command.args(["build", "--quiet"]);
+        build_command.args(&["build", "--quiet"]);
         if !cfg!(debug_assertions) {
             build_command.arg("--release");
         }
@@ -61,8 +63,10 @@ fn build_and_find_path(name: &str) -> PathBuf {
         .with_extension(EXE_EXTENSION)
 }
 
-static EXE_PATH: LazyLock<PathBuf> = LazyLock::new(|| build_and_find_path("oj"));
-static CLIENT: LazyLock<Client> = LazyLock::new(Client::new);
+lazy_static! {
+    static ref EXE_PATH: PathBuf = build_and_find_path("oj");
+    static ref CLIENT: Client = Client::new();
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct TestRequest {
@@ -202,7 +206,7 @@ impl TestCase {
     fn start_server(&mut self, restart: bool) {
         // ensure no server is running
         CLIENT
-            .post(format!("{}/internal/exit", self.prefix))
+            .post(&format!("{}/internal/exit", self.prefix))
             .send()
             .ok();
         // sleep 1 second for server shutdown
@@ -229,12 +233,13 @@ impl TestCase {
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr))
             .spawn()
-            .unwrap_or_else(|_| {
-                panic!(
+            .expect(
+                format!(
                     "case {} incorrect: failed to execute server process",
                     self.name
                 )
-            });
+                .as_str(),
+            );
         self.running_process = Some(command);
         // sleep 1 second for server startup
         std::thread::sleep(Duration::from_secs(1));
@@ -259,9 +264,9 @@ impl TestCase {
 
     fn kill_server(&mut self) {
         if let Some(mut child) = self.running_process.take() {
-            child.kill().unwrap_or_else(|_| {
-                panic!("case {} incorrect: cannot kill server process", self.name)
-            });
+            child.kill().expect(
+                format!("case {} incorrect: cannot kill server process", self.name).as_str(),
+            );
         }
     }
 
@@ -282,7 +287,7 @@ impl TestCase {
 
         let url = format!("{}/{}", &self.prefix, &c.request.path);
         let method =
-            reqwest::Method::from_bytes(c.request.method.to_uppercase().as_bytes()).unwrap();
+            reqwest::Method::from_bytes(&c.request.method.to_uppercase().as_bytes()).unwrap();
 
         let check_status_and_get_body = |url: &str, method: reqwest::Method| -> Value {
             let mut request = CLIENT
@@ -296,7 +301,7 @@ impl TestCase {
 
             let (mut resp, mut http_file) = self
                 .log_and_send(request)
-                .unwrap_or_else(|_| panic!("case {} incorrect: HTTP request failed", self.name));
+                .expect(format!("case {} incorrect: HTTP request failed", self.name).as_str());
 
             let code = resp.status().as_u16();
 
@@ -305,12 +310,13 @@ impl TestCase {
                 writeln!(http_file).ok();
                 Value::Null
             } else {
-                let json: Value = resp.json().unwrap_or_else(|_| {
-                    panic!(
+                let json: Value = resp.json().expect(
+                    format!(
                         "case {} incorrect: cannot decode response body as JSON, status code is {}",
                         self.name, code
                     )
-                });
+                    .as_str(),
+                );
 
                 serde_json::to_writer(&http_file, &json).ok();
                 writeln!(http_file).ok();
@@ -336,7 +342,7 @@ impl TestCase {
             if let Value::Number(id) = &body["id"] as &Value {
                 job_id = id
                     .as_u64()
-                    .unwrap_or_else(|| panic!("case {} incorrect: job id is not valid", self.name));
+                    .expect(format!("case {} incorrect: job id is not valid", self.name).as_str());
             } else {
                 panic!(
                     "case {} incorrect: cannot get job id after submission",
@@ -348,7 +354,7 @@ impl TestCase {
             let poll_url = format!("{}/jobs/{}", &self.prefix, job_id);
             for _ in 0..c.poll_count {
                 std::thread::sleep(Duration::from_secs(1));
-                body = check_status_and_get_body(poll_url.as_str(), reqwest::Method::GET);
+                body = check_status_and_get_body(&poll_url.as_str(), reqwest::Method::GET);
                 if job_finished(&body) {
                     break;
                 }

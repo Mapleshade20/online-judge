@@ -8,7 +8,9 @@
       "id": 0,
       "name": "hello_world",
       "type": "standard",
-      "misc": {},
+      "misc": {
+        "nonblocking": true
+      },
       "cases": [
         {
           "time_limit": 10000000,
@@ -24,14 +26,7 @@
     {
       "name": "Rust",
       "file_name": "main.rs",
-      "command": [
-        "rustc",
-        "-C",
-        "opt-level=2",
-        "%INPUT%",
-        "-o",
-        "%OUTPUT%"
-      ]
+      "command": ["rustc", "-C", "opt-level=2", "%INPUT%", "-o", "%OUTPUT%"]
     }
   ]
 }

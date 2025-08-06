@@ -1,4 +1,6 @@
-use actix_web::{App, HttpServer, Responder, get, middleware::Logger, post, web};
+use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
+use env_logger;
+use log;
 
 #[get("/hello/{name}")]
 async fn greet(name: web::Path<String>) -> impl Responder {
@@ -12,7 +14,7 @@ async fn greet(name: web::Path<String>) -> impl Responder {
 async fn exit() -> impl Responder {
     log::info!("Shutdown as requested");
     std::process::exit(0);
-    "Exited"
+    format!("Exited")
 }
 
 #[actix_web::main]
