@@ -1,4 +1,4 @@
-use assert_json_diff::{assert_json_matches_no_panic, CompareMode, Config};
+use assert_json_diff::{CompareMode, Config, assert_json_matches_no_panic};
 use lazy_static::lazy_static;
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};

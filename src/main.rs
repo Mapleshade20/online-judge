@@ -1,35 +1,31 @@
-use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
-use env_logger;
-use log;
+use clap::Parser;
+use oj::routes::JobMessage;
+use tokio::sync::mpsc;
 
-#[get("/hello/{name}")]
-async fn greet(name: web::Path<String>) -> impl Responder {
-    log::info!(target: "greet_handler", "Greeting {}", name);
-    format!("Hello {name}!")
-}
-
-// DO NOT REMOVE: used in automatic testing
-#[post("/internal/exit")]
-#[allow(unreachable_code)]
-async fn exit() -> impl Responder {
-    log::info!("Shutdown as requested");
-    std::process::exit(0);
-    format!("Exited")
-}
+use oj::config::CliArgs;
+use oj::web_server::{build_server, get_db_path, init_db, remove_db};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    HttpServer::new(|| {
-        App::new()
-            .wrap(Logger::default())
-            .route("/hello", web::get().to(|| async { "Hello World!" }))
-            .service(greet)
-            // DO NOT REMOVE: used in automatic testing
-            .service(exit)
-    })
-    .bind(("127.0.0.1", 12345))?
-    .run()
-    .await
+    let db_path = get_db_path();
+    let cli = CliArgs::parse();
+    let config = cli.to_config().expect("Failed to load configuration");
+
+    if cli.flush_data {
+        remove_db(&db_path);
+    }
+
+    let db_pool = init_db(&db_path)
+        .await
+        .expect("Failed to initialize database");
+
+    let (tx, mut rx) = mpsc::channel::<JobMessage>(100);
+
+    build_server(config, db_pool, tx)
+        .expect("Failed to start server")
+        .await?;
+
+    todo!()
 }
