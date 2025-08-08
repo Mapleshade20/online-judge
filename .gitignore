@@ -3,3 +3,9 @@
 *.stderr
 *.http
 tmp/
+
+*-shm
+*-wal
+*.db
+*.sqlite3
+*.sqlite

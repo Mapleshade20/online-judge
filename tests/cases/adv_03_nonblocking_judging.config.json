@@ -8,9 +8,8 @@
       "id": 0,
       "name": "hello_world",
       "type": "standard",
-      "misc": {
-        "nonblocking": true
-      },
+      "nonblocking": true,
+      "misc": {},
       "cases": [
         {
           "time_limit": 10000000,
