@@ -27,11 +27,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     language      TEXT    NOT NULL,
     state         TEXT    NOT NULL,
     result        TEXT    NOT NULL,
-    score         REAL,
+    score         REAL    NOT NULL,
     FOREIGN KEY (user_id)  REFERENCES users (id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_jobs_created_time ON jobs(created_time);
 
 CREATE TABLE job_case (
     job_id         INTEGER      NOT NULL,
