@@ -8,9 +8,13 @@ pub struct CliArgs {
     #[arg(long = "config", short = 'c')]
     pub config_path: String,
 
-    /// Whether to flush the existing database
+    /// Whether to remove the existing database
     #[arg(long = "flush-data", short = 'f', default_value_t = false)]
     pub flush_data: bool,
+
+    /// Number of threads to judge concurrently
+    #[arg(long, default_value_t = 1)]
+    pub threads: u8,
 }
 
 impl CliArgs {
@@ -25,8 +29,8 @@ impl CliArgs {
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub server: ServerConfig,
-    pub problems: Vec<ProblemConfig>,
-    pub languages: Vec<LanguageConfig>,
+    pub problems: ProblemConfig,
+    pub languages: LanguageConfig,
 }
 
 #[derive(Deserialize, Debug)]
@@ -35,40 +39,43 @@ pub struct ServerConfig {
     pub bind_port: Option<u16>,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct ProblemConfig {
+pub type ProblemConfig = Vec<OneProblemConfig>;
+pub type LanguageConfig = Vec<OneLanguageConfig>;
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct OneProblemConfig {
     pub id: u32,
     pub name: String,
     #[serde(flatten)]
     pub judge_type: JudgeType,
     pub nonblocking: Option<bool>,
     pub misc: Option<serde_json::Value>,
-    pub cases: Vec<ProblemCaseConfig>,
+    pub cases: Vec<OneCaseConfig>,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct ProblemCaseConfig {
-    pub score: f32,
+#[derive(Deserialize, Debug, Clone)]
+pub struct OneCaseConfig {
+    pub score: f64,
     pub input_file: String,
     pub answer_file: String,
     pub time_limit: MicroSecond,
-    pub memory_limit: ByteSize,
+    pub memory_limit: KiloByte,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct MicroSecond(pub u64);
 
-#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ByteSize(pub u64);
+#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct KiloByte(pub u64);
 
-#[derive(Deserialize, Debug)]
-pub struct LanguageConfig {
+#[derive(Deserialize, Debug, Clone)]
+pub struct OneLanguageConfig {
     pub name: String,
     pub file_name: String,
     pub command: Vec<String>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum JudgeType {
     Standard,

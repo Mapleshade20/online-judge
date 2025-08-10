@@ -1,12 +1,12 @@
 // use actix_web::{HttpResponse, Responder, get, web};
-use serde::Serialize;
+// use serde::Serialize;
 // use sqlx::sqlite::SqlitePool;
 
-#[derive(sqlx::FromRow, Serialize)]
-struct User {
-    id: i64,
-    name: String,
-}
+// #[derive(sqlx::FromRow, Serialize)]
+// struct User {
+//     id: i64,
+//     name: String,
+// }
 
 // #[get("/users")]
 // async fn get_users(pool: web::Data<SqlitePool>) -> impl Responder {

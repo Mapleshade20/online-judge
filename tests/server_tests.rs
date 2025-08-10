@@ -1,3 +1,8 @@
+use std::fs;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
+
 use actix_web::{
     App, HttpRequest,
     error::{Error, JsonPayloadError},
@@ -5,16 +10,15 @@ use actix_web::{
 };
 use chrono::{SecondsFormat, Utc};
 use serde_json::json;
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-use std::fs;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
-use tokio::sync::mpsc;
+use sqlx::sqlite::SqlitePool;
 
 use oj::config::{
-    ByteSize, JudgeType, LanguageConfig, MicroSecond, ProblemCaseConfig, ProblemConfig,
+    JudgeType, KiloByte, LanguageConfig, MicroSecond, OneCaseConfig, OneLanguageConfig,
+    OneProblemConfig, ProblemConfig,
 };
-use oj::routes::{CaseResult, JobMessage, PostJobsRequest, PostJobsResponse, post_jobs_handler};
+use oj::database as db;
+use oj::queue::JobQueue;
+use oj::routes::{CaseResult, JobMessage, JobRecord, JobSubmission, post_jobs_handler};
 
 // Global counter to ensure unique test database names
 static TEST_DB_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -29,61 +33,19 @@ async fn create_test_db() -> (SqlitePool, String) {
     // Remove existing test database if it exists
     let _ = fs::remove_file(&db_path);
 
-    let db_url = format!("sqlite:{}?mode=rwc", db_path);
-    let db_pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&db_url)
-        .await
-        .expect("Failed to connect to test database");
+    let db_pool = db::init_db(&db_path).await.unwrap();
 
-    // Initialize database schema and test data
-    for sql in &[
-        "PRAGMA foreign_keys = ON;",
-        "PRAGMA busy_timeout = 5000;",
-        "PRAGMA journal_mode = WAL;",
-        "PRAGMA synchronous = NORMAL;",
-        r"
-        CREATE TABLE users (
-            id            INTEGER PRIMARY KEY,
-            name          TEXT    NOT NULL UNIQUE
-        );",
-        r"
-        CREATE TABLE jobs (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_time  TEXT    NOT NULL,
-            updated_time  TEXT    NOT NULL,
-            user_id       INTEGER NOT NULL,
-            contest_id    INTEGER,
-            problem_id    INTEGER NOT NULL,
-            source_code   TEXT    NOT NULL,
-            language      TEXT    NOT NULL,
-            state         TEXT    NOT NULL,
-            result        TEXT    NOT NULL,
-            score         REAL,
-            FOREIGN KEY (user_id)  REFERENCES users (id)
-        );",
-        "CREATE INDEX idx_jobs_created_time ON jobs(created_time);",
-        r"
-        CREATE TABLE job_case (
-            job_id         INTEGER      NOT NULL,
-            case_index     INTEGER      NOT NULL,
-            result         TEXT         NOT NULL,
-            time_us        INTEGER      NOT NULL,
-            memory_kb      INTEGER      NOT NULL,
-            info           TEXT         DEFAULT '',
-            PRIMARY KEY (job_id, case_index),
-            FOREIGN KEY (job_id)  REFERENCES jobs (id)
-        );",
-        "INSERT INTO users (id, name) VALUES (0, 'root');",
-        "INSERT INTO users (id, name) VALUES (1, 'test_user_1');",
-        "INSERT INTO users (id, name) VALUES (2, 'test_user_2');",
-        "INSERT INTO users (id, name) VALUES (3, 'test_user_3');",
-        "INSERT INTO users (id, name) VALUES (4, 'test_user_4');",
-    ] {
-        sqlx::query(sql)
-            .execute(&db_pool)
-            .await
-            .expect("Failed to execute SQL");
+    // Add test users for integration tests
+    for i in 1..10 {
+        let user_name = format!("test_user_{}", i);
+        sqlx::query!(
+            "INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)",
+            i,
+            user_name
+        )
+        .execute(&db_pool)
+        .await
+        .unwrap();
     }
 
     (db_pool, db_path)
@@ -127,49 +89,49 @@ impl Drop for TestDbGuard {
 }
 
 // Helper function to create test config
-fn create_test_config() -> (Vec<ProblemConfig>, Vec<LanguageConfig>) {
+fn create_test_config() -> (Arc<ProblemConfig>, Arc<LanguageConfig>) {
     let problems = vec![
-        ProblemConfig {
+        OneProblemConfig {
             id: 0,
             name: "test_problem_blocking".to_string(),
             judge_type: JudgeType::Standard,
             nonblocking: Some(false),
             misc: None,
             cases: vec![
-                ProblemCaseConfig {
+                OneCaseConfig {
                     score: 50.0,
                     input_file: "test1.in".to_string(),
                     answer_file: "test1.ans".to_string(),
                     time_limit: MicroSecond(1000000),
-                    memory_limit: ByteSize(1048576),
+                    memory_limit: KiloByte(1048576),
                 },
-                ProblemCaseConfig {
+                OneCaseConfig {
                     score: 50.0,
                     input_file: "test2.in".to_string(),
                     answer_file: "test2.ans".to_string(),
                     time_limit: MicroSecond(2000000),
-                    memory_limit: ByteSize(1048576),
+                    memory_limit: KiloByte(1048576),
                 },
             ],
         },
-        ProblemConfig {
+        OneProblemConfig {
             id: 1,
             name: "test_problem_nonblocking".to_string(),
             judge_type: JudgeType::Standard,
             nonblocking: Some(true),
             misc: None,
-            cases: vec![ProblemCaseConfig {
+            cases: vec![OneCaseConfig {
                 score: 100.0,
                 input_file: "test1.in".to_string(),
                 answer_file: "test1.ans".to_string(),
                 time_limit: MicroSecond(1000000),
-                memory_limit: ByteSize(1048576),
+                memory_limit: KiloByte(1048576),
             }],
         },
     ];
 
     let languages = vec![
-        LanguageConfig {
+        OneLanguageConfig {
             name: "Rust".to_string(),
             file_name: "main.rs".to_string(),
             command: vec![
@@ -179,19 +141,20 @@ fn create_test_config() -> (Vec<ProblemConfig>, Vec<LanguageConfig>) {
                 "%INPUT%".to_string(),
             ],
         },
-        LanguageConfig {
+        OneLanguageConfig {
             name: "Python".to_string(),
             file_name: "main.py".to_string(),
             command: vec!["python3".to_string(), "%INPUT%".to_string()],
         },
     ];
 
-    (problems, languages)
+    (Arc::new(problems), Arc::new(languages))
 }
 
 // Mock judger that simulates evaluation results
-async fn mock_judger(mut rx: mpsc::Receiver<JobMessage>) {
-    while let Some(message) = rx.recv().await {
+async fn mock_judger(job_queue: Arc<JobQueue>) {
+    loop {
+        let message = job_queue.pop().await;
         match message {
             JobMessage::FireAndForget { job_id } => {
                 // For non-blocking jobs, we just consume the message
@@ -201,11 +164,11 @@ async fn mock_judger(mut rx: mpsc::Receiver<JobMessage>) {
                 // For blocking jobs, we send back a mock response
                 println!("Mock judger received blocking job: {}", job_id);
 
-                let mock_response = PostJobsResponse {
+                let mock_response = JobRecord {
                     id: job_id,
                     created_time: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
                     updated_time: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-                    submission: PostJobsRequest {
+                    submission: JobSubmission {
                         source_code: "fn main() { println!(\"Hello World!\"); }".to_string(),
                         language: "Rust".to_string(),
                         user_id: 0,
@@ -244,17 +207,17 @@ async fn test_post_jobs_nonblocking_success() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
     // Start mock judger
-    tokio::spawn(mock_judger(rx));
+    tokio::spawn(mock_judger(job_queue.clone()));
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool.clone()))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -306,17 +269,17 @@ async fn test_post_jobs_blocking_success() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
     // Start mock judger
-    tokio::spawn(mock_judger(rx));
+    tokio::spawn(mock_judger(job_queue.clone()));
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool.clone()))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -368,14 +331,14 @@ async fn test_post_jobs_invalid_language() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, _rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -407,14 +370,14 @@ async fn test_post_jobs_invalid_problem_id() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, _rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -446,14 +409,14 @@ async fn test_post_jobs_invalid_json() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, _rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -477,14 +440,14 @@ async fn test_post_jobs_missing_fields() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, _rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -513,11 +476,13 @@ async fn test_blocking_job_delayed_response() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, mut rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
     // Mock judger that responds after a delay
+    let delayed_queue = job_queue.clone();
     tokio::spawn(async move {
-        while let Some(message) = rx.recv().await {
+        loop {
+            let message = delayed_queue.pop().await;
             match message {
                 JobMessage::Blocking { job_id, responder } => {
                     println!(
@@ -528,11 +493,11 @@ async fn test_blocking_job_delayed_response() {
                     // Simulate some processing time
                     tokio::time::sleep(Duration::from_millis(100)).await;
 
-                    let response = PostJobsResponse {
+                    let response = JobRecord {
                         id: job_id,
                         created_time: "2024-08-09T01:00:00.000Z".to_string(),
                         updated_time: "2024-08-09T01:00:01.000Z".to_string(),
-                        submission: PostJobsRequest {
+                        submission: JobSubmission {
                             source_code: "fn main() { println!(\"Hello World!\"); }".to_string(),
                             language: "Rust".to_string(),
                             user_id: 0,
@@ -561,9 +526,9 @@ async fn test_blocking_job_delayed_response() {
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -586,7 +551,7 @@ async fn test_blocking_job_delayed_response() {
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 200);
-    let body: PostJobsResponse = test::read_body_json(resp).await;
+    let body: JobRecord = test::read_body_json(resp).await;
     assert!(body.id >= 1, "job_id should be positive"); // Don't check exact ID since it depends on previous tests
     assert_eq!(body.state, "Finished");
     assert_eq!(body.result, "Accepted");
@@ -597,16 +562,16 @@ async fn test_multiple_languages_support() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
-    tokio::spawn(mock_judger(rx));
+    tokio::spawn(mock_judger(job_queue.clone()));
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool.clone()))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -660,16 +625,16 @@ async fn test_database_persistence() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
-    tokio::spawn(mock_judger(rx));
+    tokio::spawn(mock_judger(job_queue.clone()));
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool.clone()))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -738,16 +703,16 @@ async fn test_concurrent_requests() {
     let (db_pool, db_path) = create_test_db().await;
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
-    let (tx, rx) = mpsc::channel::<JobMessage>(100);
+    let job_queue = Arc::new(JobQueue::new());
 
-    tokio::spawn(mock_judger(rx));
+    tokio::spawn(mock_judger(job_queue.clone()));
 
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_pool.clone()))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
+            .app_data(web::Data::from(problems))
+            .app_data(web::Data::from(languages))
+            .app_data(web::Data::from(job_queue))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .route("/jobs", web::post().to(post_jobs_handler)),
     )
@@ -782,7 +747,7 @@ async fn test_concurrent_requests() {
     // Check that all responses are successful
     for resp in responses {
         assert_eq!(resp.status(), 200);
-        let body: PostJobsResponse = test::read_body_json(resp).await;
+        let body: JobRecord = test::read_body_json(resp).await;
         assert!(body.id >= 1, "job_id should be positive"); // Don't check upper bound since it depends on previous tests
     }
 
@@ -796,39 +761,4 @@ async fn test_concurrent_requests() {
         job_count.0, 5,
         "Expected 5 jobs to be inserted into database"
     );
-}
-
-#[actix_web::test]
-async fn test_post_jobs_invalid_contest_id() {
-    let (db_pool, db_path) = create_test_db().await;
-    let _guard = TestDbGuard::new(db_path);
-    let (problems, languages) = create_test_config();
-    let (tx, _rx) = mpsc::channel::<JobMessage>(100);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db_pool))
-            .app_data(web::Data::new(problems))
-            .app_data(web::Data::new(languages))
-            .app_data(web::Data::new(tx))
-            .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
-    )
-    .await;
-
-    let request_body = PostJobsRequest {
-        source_code: "print('Hello, World!')".to_string(),
-        language: "python3".to_string(),
-        user_id: 1,
-        contest_id: 999, // Invalid contest ID
-        problem_id: 1,
-    };
-
-    let req = test::TestRequest::post()
-        .uri("/jobs")
-        .set_json(&request_body)
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 404);
 }
