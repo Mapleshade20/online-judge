@@ -5,9 +5,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::{LanguageConfig, ProblemConfig};
 use crate::database as db;
-use crate::judge;
 use crate::queue::JobQueue;
 use crate::routes::JobMessage;
+use crate::sandbox::Sandbox;
 
 pub async fn worker(
     id: u8,
@@ -16,13 +16,14 @@ pub async fn worker(
     db_pool: Arc<SqlitePool>,
     queue: Arc<JobQueue>,
     token: CancellationToken,
-) {
-    log::info!("worker {id} initialized");
+) -> anyhow::Result<()> {
+    let sandbox = Arc::new(Sandbox::build(id)?);
+    log::info!("Worker {id} initialized");
 
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                log::info!("worker {id} received shutdown signal, stopping");
+                log::info!("Worker {id} received shutdown signal, stopping");
                 break;
             }
 
@@ -34,11 +35,17 @@ pub async fn worker(
                 let job = match job {
                     Ok(job) => job,
                     Err(e) => {
-                        log::error!("failed to fetch job {job_id} from database, job discarded: {e}");
+                        log::error!("Failed to fetch job {job_id} from database, job discarded: {e}");
                         continue; // Skip to the next iteration
                     }
                 };
-                log::info!("worker {id} got job {job_id} from queue");
+                log::info!("Worker {id} got job {job_id} from queue");
+
+                // 2. Update job status to Running
+                if let Err(e) = db::update_job_to_running(job_id, db_pool.clone()).await {
+                    log::error!("Failed to update job {job_id} status to Running: {e}");
+                    continue; // Skip to the next iteration
+                }
 
                 let problem_config = problems
                     .iter()
@@ -51,43 +58,45 @@ pub async fn worker(
 
                 if problem_config.is_none() || language_config.is_none() {
                     log::error!(
-                        "missing config for problem {} or language {}, job {job_id} discarded",
+                        "Missing config for problem {} or language {}, job {job_id} discarded",
                         job.submission.problem_id,
                         job.submission.language
                     );
                     continue; // Skip to the next iteration
                 }
 
-                // 2. Spawn blocking judger and get its handle
+                // 3. Spawn blocking judger and get its handle
+                let sandbox_ref = Arc::clone(&sandbox);
                 let result_handle = tokio::task::spawn_blocking(move || {
-                    let result = judge::run(job, problem_config.unwrap(), language_config.unwrap()); // DEBUG: not supposed to panic
-                    log::info!("job {job_id} finished on worker {id}");
+                    let result = sandbox_ref.run(job, problem_config.unwrap(), language_config.unwrap());
+                    log::info!("Job {job_id} finished on worker {id}");
 
                     result
                 });
 
-                // 3. Give back control to the runtime until job is done
+                // 4. Give back control to the runtime until job is done
                 match result_handle.await {
-                    Ok(job_result) => {
+                    Ok(Ok(job_result)) => {
                         db::save_result(job_id, db_pool.clone(), &job_result)
                             .await
-                            .unwrap_or_else(|e| log::error!("failed to save job {job_id} result: {e}"));
+                            .unwrap_or_else(|e| log::error!("Failed to save job {job_id} result: {e}"));
 
                         if let JobMessage::Blocking { responder, .. } = job_message {
                             if responder.send(job_result).is_err() {
-                                log::warn!("failed to send blocking job {job_id} result back, receiver dropped");
+                                log::warn!("Failed to send blocking job {job_id} result back to server");
                             } else {
-                                log::debug!("blocking job {job_id} result sent back from worker {id}");
+                                log::debug!("Blocking job {job_id} result sent back from worker {id}");
                             }
                         }
                     }
-                    Err(e) => {
-                        log::error!("spawning job {job_id} panicked on worker {id}: {e}");
+                    err => {
+                        log::error!("Spawning job {job_id} failed on worker {id}: {:?}", err);
                     }
                 }
             }
         };
     }
 
-    log::info!("worker {id} has shut down gracefully");
+    log::info!("Worker {id} has shut down gracefully");
+    Ok(())
 }

@@ -34,8 +34,8 @@ pub struct JobRecord {
 pub struct CaseResult {
     pub id: u32, // index of the case
     pub result: String,
-    pub time: u32,
-    pub memory: u32,
+    pub time: u32,   // time in microseconds
+    pub memory: u32, // memory in KB
     pub info: String,
 }
 
@@ -80,11 +80,11 @@ pub async fn post_jobs_handler(
 
     let job_id = match db::create_job(&body, &pool).await {
         Ok(id) => {
-            log::info!("job submitted successfully, id = {id}");
+            log::info!("Job submitted successfully, id = {id}");
             id
         }
         Err(e) => {
-            log::error!("failed to insert job into database: {e}");
+            log::error!("Failed to insert job into database: {e}");
             return HttpResponse::InternalServerError().json(ErrorResponse {
                 reason: "ERR_EXTERNAL",
                 code: 5,
@@ -100,7 +100,7 @@ pub async fn post_jobs_handler(
         let job_message = JobMessage::FireAndForget { job_id };
 
         job_queue.push(job_message).await;
-        log::debug!("nonblocking job sent to queue, job_id = {job_id}");
+        log::debug!("Non-blocking job sent to queue, job_id = {job_id}");
 
         let cases = (0..=problem_config.cases.len()) // 0 is compile case, 1..=N are test cases
             .map(|i| CaseResult {
@@ -130,15 +130,15 @@ pub async fn post_jobs_handler(
         };
 
         job_queue.push(job_message).await;
-        log::debug!("blocking job sent to queue, job_id = {job_id}");
+        log::debug!("Blocking job sent to queue, job_id = {job_id}");
 
         match rx.await {
             Ok(response) => {
-                log::info!("job completed successfully, id = {}", response.id);
+                log::info!("Job completed successfully, id = {}", response.id);
                 HttpResponse::Ok().json(response)
             }
             Err(e) => {
-                log::error!("failed to receive job response: {e}");
+                log::error!("Failed to receive job response: {e}");
                 HttpResponse::InternalServerError().json(ErrorResponse {
                     reason: "ERR_INTERNAL",
                     code: 6,

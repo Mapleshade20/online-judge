@@ -96,7 +96,6 @@ fn create_test_config() -> (Arc<ProblemConfig>, Arc<LanguageConfig>) {
             name: "test_problem_blocking".to_string(),
             judge_type: JudgeType::Standard,
             nonblocking: Some(false),
-            misc: None,
             cases: vec![
                 OneCaseConfig {
                     score: 50.0,
@@ -119,7 +118,6 @@ fn create_test_config() -> (Arc<ProblemConfig>, Arc<LanguageConfig>) {
             name: "test_problem_nonblocking".to_string(),
             judge_type: JudgeType::Standard,
             nonblocking: Some(true),
-            misc: None,
             cases: vec![OneCaseConfig {
                 score: 100.0,
                 input_file: "test1.in".to_string(),
@@ -246,8 +244,9 @@ async fn test_post_jobs_nonblocking_success() {
     assert_eq!(response_body["state"], "Queueing");
     assert_eq!(response_body["result"], "Waiting");
     assert_eq!(response_body["score"], 0.0);
-    assert_eq!(response_body["cases"].as_array().unwrap().len(), 1);
+    assert_eq!(response_body["cases"].as_array().unwrap().len(), 2);
     assert_eq!(response_body["cases"][0]["result"], "Waiting");
+    assert_eq!(response_body["cases"][1]["result"], "Waiting");
 
     // Verify job was stored in database
     let job_id = response_body["id"].as_u64().unwrap() as u32;
