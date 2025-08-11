@@ -49,7 +49,7 @@ pub struct OneProblemConfig {
     #[serde(flatten)]
     pub judge_type: JudgeType,
     pub nonblocking: Option<bool>,
-    pub misc: Option<serde_json::Value>,
+    // pub misc: Option<serde_json::Value>,
     pub cases: Vec<OneCaseConfig>,
 }
 
@@ -62,11 +62,26 @@ pub struct OneCaseConfig {
     pub memory_limit: KiloByte,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct MicroSecond(pub u64);
+#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub struct MicroSecond(pub u32);
 
-#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct KiloByte(pub u64);
+#[derive(Deserialize, Debug, PartialEq, PartialOrd, Clone, Copy)]
+pub struct Second(pub f64);
+
+impl From<MicroSecond> for Second {
+    fn from(value: MicroSecond) -> Self {
+        Second(value.0 as f64 / 1_000_000.0)
+    }
+}
+
+impl From<Second> for MicroSecond {
+    fn from(value: Second) -> Self {
+        MicroSecond((value.0 * 1_000_000.0) as u32)
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub struct KiloByte(pub u32);
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct OneLanguageConfig {

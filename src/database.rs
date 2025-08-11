@@ -67,7 +67,7 @@ pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
         sqlx::query(sql).execute(&db_pool).await?;
     }
 
-    log::info!("initialized database at {}", db_path.as_ref().display());
+    log::info!("Initialized database at {}", db_path.as_ref().display());
 
     Ok(db_pool)
 }
@@ -75,11 +75,11 @@ pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
 pub fn remove_db(db_path: impl AsRef<Path>) {
     if let Err(e) = std::fs::remove_file(&db_path) {
         log::warn!(
-            "unable to remove database at {}: {e}",
+            "Unable to remove database at {}: {e}",
             db_path.as_ref().display()
         );
     } else {
-        log::info!("removed database at {}", db_path.as_ref().display());
+        log::info!("Removed database at {}", db_path.as_ref().display());
     }
 }
 
@@ -132,6 +132,30 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
         language: job_data.language,
     };
 
+    // Fetch case results
+    let case_data = sqlx::query!(
+        r#"
+        SELECT case_index, result, time_us, memory_kb, info
+        FROM job_case
+        WHERE job_id = ?
+        ORDER BY case_index
+        "#,
+        id
+    )
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    let cases = case_data
+        .into_iter()
+        .map(|case| crate::routes::CaseResult {
+            id: case.case_index as u32,
+            result: case.result,
+            time: case.time_us as u32,
+            memory: case.memory_kb as u32, // memory in KB
+            info: case.info.unwrap_or_default(),
+        })
+        .collect();
+
     Ok(JobRecord {
         id,
         created_time: job_data.created_time,
@@ -140,11 +164,47 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
         state: job_data.state,
         result: job_data.result,
         score: job_data.score,
-        cases: Vec::new(), // Will be populated by the judge
+        cases,
     })
 }
 
+pub async fn update_job_to_running(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<()> {
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let mut tx = pool.begin().await?;
+
+    // Update job state and result to Running
+    sqlx::query!(
+        r#"
+        UPDATE jobs 
+        SET state = 'Running', result = 'Running', updated_time = ?
+        WHERE id = ?
+        "#,
+        now,
+        id
+    )
+    .execute(tx.as_mut())
+    .await?;
+
+    // Update case 0 result to Running
+    sqlx::query!(
+        r#"
+        UPDATE job_case 
+        SET result = 'Running'
+        WHERE job_id = ? AND case_index = 0
+        "#,
+        id
+    )
+    .execute(tx.as_mut())
+    .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> sqlx::Result<()> {
+    let mut tx = pool.begin().await?;
+
+    // Update job record
     sqlx::query!(
         r#"
         UPDATE jobs 
@@ -157,10 +217,37 @@ pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> 
         result.updated_time,
         id
     )
-    .execute(pool.as_ref())
+    .execute(&mut *tx)
     .await?;
 
-    todo!("update all cases");
+    // Delete existing case results
+    sqlx::query!(
+        r#"
+        DELETE FROM job_case WHERE job_id = ?
+        "#,
+        id
+    )
+    .execute(&mut *tx)
+    .await?;
 
+    // Insert new case results
+    for case in &result.cases {
+        sqlx::query!(
+            r#"
+            INSERT INTO job_case (job_id, case_index, result, time_us, memory_kb, info)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+            id,
+            case.id,
+            case.result,
+            case.time,
+            case.memory, // memory already in KB
+            case.info
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
     Ok(())
 }

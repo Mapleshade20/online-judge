@@ -14,8 +14,17 @@ use oj::worker::worker;
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
+    // TODO: "isolate" existence check
+    // TODO: running user check
+
     let db_path = db::get_db_path();
     let cli = CliArgs::parse();
+    let n_threads = cli.threads;
+
+    if n_threads == 0 {
+        panic!("The number of worker threads must not be 0");
+    }
+
     let Config {
         server: server_config,
         problems: problem_config,
@@ -35,7 +44,8 @@ async fn main() -> std::io::Result<()> {
     let db_pool = Arc::new(db_pool);
     let job_queue = Arc::new(JobQueue::new());
     let shutdown_token = CancellationToken::new();
-    let n_threads = cli.threads;
+
+    // ======= PREPARATION END, EXECUTION START =======
 
     let mut workers = JoinSet::new();
     for i in 1..=n_threads {
@@ -59,14 +69,19 @@ async fn main() -> std::io::Result<()> {
     .expect("Failed to build server");
 
     let server_handle = server.handle();
-    let server_task = tokio::spawn(server);
+    let server_task = actix_web::rt::spawn(server);
+
+    // ===== EXECUTION END, WAITING FOR SHUTDOWN ======
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
-            log::info!("ctrl-c received, shutting down...");
+            log::info!("Ctrl-c received, shutting down...");
         }
-        res = server_task => {
-            log::error!("server task finished unexpectedly: {:?}", res);
+        res_server = server_task => {
+            log::error!("Server terminated unexpectedly: {:?}", res_server);
+        }
+        Some(res_worker) = workers.join_next() => {
+            log::error!("A worker terminated unexpectedly: {:?}", res_worker);
         }
     }
 
@@ -75,19 +90,19 @@ async fn main() -> std::io::Result<()> {
 
     // 2. Broadcast shutdown signal to workers
     shutdown_token.cancel();
-    log::info!("shutdown signal sent to workers, waiting for them to finish...");
+    log::info!("Shutdown signal sent to workers, waiting for them to finish...");
 
     // 3. Wait until every worker terminates
     while let Some(res) = workers.join_next().await {
         if let Err(e) = res {
             if e.is_panic() {
-                log::error!("worker handle panicked: {:?}", e);
+                log::error!("Worker handle panicked: {:?}", e);
             } else {
-                log::error!("worker handle finished with error: {:?}", e);
+                log::error!("Worker handle finished with error: {:?}", e);
             }
         }
     }
 
-    log::info!("shutdown complete");
+    log::info!("Shutdown complete");
     Ok(())
 }
