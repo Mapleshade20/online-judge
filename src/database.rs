@@ -6,7 +6,7 @@ use actix_web::web;
 use chrono::{SecondsFormat, Utc};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
-use crate::routes::{JobRecord, JobSubmission};
+use crate::routes::{CaseResult, JobRecord, JobSubmission};
 
 pub fn get_db_path() -> PathBuf {
     use directories::ProjectDirs;
@@ -83,9 +83,22 @@ pub fn remove_db(db_path: impl AsRef<Path>) {
     }
 }
 
+/// Creates a new job entry in the database along with its associated test cases.
+///
+/// * `len` - The number of cases, including compilation, to create for this job.
+///
+/// # Errors
+///
+/// This function will return an `Err` in the following cases:
+///
+/// - If the database connection pool cannot begin a transaction.
+/// - If the insertion of the job record into the `jobs` table fails (e.g., due to constraint violations).
+/// - If the insertion of any of the associated test cases into the `job_case` table fails.
+/// - If committing the transaction fails.
 pub async fn create_job(
     body: &web::Json<JobSubmission>,
     pool: &web::Data<SqlitePool>,
+    len: u16,
 ) -> sqlx::Result<u32> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
@@ -105,11 +118,26 @@ pub async fn create_job(
         now,
         now
     )
-    .execute(&mut *tx)
+    .execute(tx.as_mut())
     .await?;
 
+    let job_id = result.last_insert_rowid() as u32;
+
+    for i in 0..len {
+        sqlx::query!(
+            r#"
+            INSERT INTO job_case (job_id, case_index, result, time_us, memory_kb)
+            VALUES (?, ?, 'Waiting', 0, 0)
+            "#,
+            job_id,
+            i
+        )
+        .execute(tx.as_mut())
+        .await?;
+    }
+
     tx.commit().await?;
-    Ok(result.last_insert_rowid() as u32)
+    Ok(job_id)
 }
 
 pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord> {
@@ -147,7 +175,7 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
 
     let cases = case_data
         .into_iter()
-        .map(|case| crate::routes::CaseResult {
+        .map(|case| CaseResult {
             id: case.case_index as u32,
             result: case.result,
             time: case.time_us as u32,

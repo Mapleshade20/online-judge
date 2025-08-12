@@ -78,7 +78,10 @@ pub async fn post_jobs_handler(
         });
     }
 
-    let job_id = match db::create_job(&body, &pool).await {
+    let problem = problems.as_ref().get(found_problem_idx.unwrap()).unwrap();
+    let total_cases = 1 + problem.cases.len() as u16; // Compile is case 0
+
+    let job_id = match db::create_job(&body, &pool, total_cases).await {
         Ok(id) => {
             log::info!("Job submitted successfully, id = {id}");
             id
@@ -92,9 +95,7 @@ pub async fn post_jobs_handler(
         }
     };
 
-    let problem_config = problems.as_ref().get(found_problem_idx.unwrap()).unwrap();
-
-    let non_blocking = problem_config.nonblocking.unwrap_or(false);
+    let non_blocking = problem.nonblocking.unwrap_or(false);
 
     if non_blocking {
         let job_message = JobMessage::FireAndForget { job_id };
@@ -102,7 +103,7 @@ pub async fn post_jobs_handler(
         job_queue.push(job_message).await;
         log::debug!("Non-blocking job sent to queue, job_id = {job_id}");
 
-        let cases = (0..=problem_config.cases.len()) // 0 is compile case, 1..=N are test cases
+        let cases = (0..=problem.cases.len()) // 0 is compile case, 1..=N are test cases
             .map(|i| CaseResult {
                 id: i as u32,
                 result: "Waiting".to_string(),
