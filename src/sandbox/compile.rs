@@ -76,8 +76,14 @@ impl Sandbox {
         let wall_time_arg = format!("--wall-time={}", COMPILE_TIME_LIMIT);
         let memory_arg = format!("--cg-mem={}", COMPILE_MEMORY_LIMIT);
         let meta_path = paths.meta.to_string_lossy();
+        let dir_args = if Path::new("/etc/alternatives").exists() {
+            vec!["--dir=/opt/oj", "--dir=/etc/alternatives"]
+        } else {
+            vec!["--dir=/opt/oj"]
+        };
 
         let _ = Command::new("isolate")
+            .args(dir_args)
             .args([
                 "-b", &sandbox_id,
                 "--cg", "--run",
@@ -86,7 +92,6 @@ impl Sandbox {
                 &fsize_arg,
                 &wall_time_arg,
                 &memory_arg,
-                "--dir=/opt/oj", "--dir=/etc/alternatives",
                 "-E", "RUSTUP_HOME=/opt/oj/rust/rustup",
                 "-E", "CARGO_HOME=/opt/oj/rust/cargo", 
                 "-E", "PATH=/opt/oj/rust/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
