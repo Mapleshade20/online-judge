@@ -70,18 +70,21 @@ chmod -R 755 /opt/oj
 isolate -b 3 --cg --init
 
 # Prepare `code.rs`, `code.cpp`, `code.c` as test code
-cp code.* /var/local/lib/isolate/3/box/
+cp code.rs /var/local/lib/isolate/3/box/
 
+# On ubuntu 22.04, you should ensure "/etc/alternatives" is provided to the sandbox
 alias compile="isolate -b 3 --cg --run --processes=10 --open-files=512 --fsize=65536 --wall-time=30 --cg-mem=262144 --dir=/opt/oj --dir=/etc/alternatives -E RUSTUP_HOME=/opt/oj/rust/rustup -E CARGO_HOME=/opt/oj/rust/cargo -E PATH=/opt/oj/rust/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --stderr-to-stdout -o compile.out -M /tmp/box3.meta --"
+# While on Arch Linux, this directory is not needed and doesn't even exist
+alias compile="isolate -b 3 --cg --run --processes=10 --open-files=512 --fsize=65536 --wall-time=30 --cg-mem=262144 --dir=/opt/oj -E RUSTUP_HOME=/opt/oj/rust/rustup -E CARGO_HOME=/opt/oj/rust/cargo -E PATH=/opt/oj/rust/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --stderr-to-stdout -o compile.out -M /tmp/box3.meta --"
+# But don't worry; the program will auto-detect if that directory exists
 
 # Note: 
 # the meta file location is relative to the host machine, not the sandbox!
 # the stdout file location is inside its /box
-compile /bin/sh -c 'rustc -o main-rust code.rs'
+compile /bin/sh -c 'rustc -o main code.rs'
 compile /bin/sh -c 'g++ -o main-cpp code.cpp'
 compile /bin/sh -c 'gcc -o main-c code.c -lm'
-
-cat /tmp/3.meta
+cat /tmp/box3.meta
 # A SUCCESSFUL COMPILE:
 # time:0.306
 # time-wall:0.308
@@ -91,9 +94,10 @@ cat /tmp/3.meta
 # cg-mem:63244
 # exitcode:0
 
-alias run="isolate -b 3 --cg --run --processes=4 --open-files=30 --fsize=16384 --time=1 --wall-time=5 --extra-time=1 --cg-mem=131072 --stack=65536 --dir=/opt/oj --dir=/etc/alternatives -E RUSTUP_HOME=/opt/oj/rust/rustup -E CARGO_HOME=/opt/oj/rust/cargo -E PATH=/opt/oj/rust/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --stderr-to-stdout -o case.out -M /tmp/box3.meta --"
+alias run="isolate -b 3 --cg --run --processes=4 --open-files=30 --fsize=16384 --time=1 --wall-time=5 --extra-time=1 --cg-mem=131072 --stack=65536 -E PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --stderr-to-stdout -o case.out -M /tmp/box3.meta --"
 
-cat /tmp/3.meta
+run ./main
+cat /tmp/box3.meta
 # (RUN PANICKED)
 # time:0.003
 # time-wall:0.013
@@ -191,5 +195,5 @@ cat /tmp/3.meta
 # (STDOUT + STDERR)
 # 限制 30 个文件, 打开第 28 个文件时失败: Too many open files (os error 24)
 
-isolate -b 3 --cg --cleanup
 # Should cleanup on each id. `isolate --cg --cleanup` only applies to 0.
+isolate -b 3 --cg --cleanup

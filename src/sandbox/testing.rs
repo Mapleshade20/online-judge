@@ -153,6 +153,8 @@ impl Sandbox {
                 &processes_arg,
                 &open_files_arg,
                 &fsize_arg,
+                "-E",
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                 "-M",
                 &meta_path,
                 "-i",
