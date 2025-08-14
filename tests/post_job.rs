@@ -18,7 +18,7 @@ use oj::config::{
 };
 use oj::database as db;
 use oj::queue::JobQueue;
-use oj::routes::{CaseResult, JobMessage, JobRecord, JobSubmission, post_jobs_handler};
+use oj::routes::{CaseResult, JobMessage, JobRecord, JobSubmission, post_job_handler};
 
 // Global counter to ensure unique test database names
 static TEST_DB_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -217,7 +217,7 @@ async fn test_post_jobs_nonblocking_success() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -256,7 +256,7 @@ async fn test_post_jobs_nonblocking_success() {
         .expect("Failed to fetch job from database");
 
     assert_eq!(stored_job.user_id, 0);
-    assert_eq!(stored_job.contest_id.unwrap(), 0);
+    assert_eq!(stored_job.contest_id, 0);
     assert_eq!(stored_job.problem_id, 1);
     assert_eq!(stored_job.language, "Rust");
     assert_eq!(stored_job.state, "Queueing");
@@ -282,7 +282,7 @@ async fn test_post_jobs_blocking_success() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -321,7 +321,7 @@ async fn test_post_jobs_blocking_success() {
         .expect("Failed to fetch job from database");
 
     assert_eq!(stored_job.user_id, 0);
-    assert_eq!(stored_job.contest_id.unwrap(), 0);
+    assert_eq!(stored_job.contest_id, 0);
     assert_eq!(stored_job.problem_id, 0);
     assert_eq!(stored_job.language, "Rust");
     assert_eq!(stored_job.state, "Queueing"); // Note: database state isn't updated in mock
@@ -343,7 +343,7 @@ async fn test_post_jobs_invalid_language() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -384,7 +384,7 @@ async fn test_post_jobs_invalid_problem_id() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -425,7 +425,7 @@ async fn test_post_jobs_invalid_json() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -458,7 +458,7 @@ async fn test_post_jobs_missing_fields() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -541,7 +541,7 @@ async fn test_blocking_job_delayed_response() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -586,7 +586,7 @@ async fn test_multiple_languages_support() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -651,7 +651,7 @@ async fn test_database_persistence() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 
@@ -731,7 +731,7 @@ async fn test_concurrent_requests() {
             .app_data(web::Data::from(job_queue))
             .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .service(post_jobs_handler),
+            .service(post_job_handler),
     )
     .await;
 

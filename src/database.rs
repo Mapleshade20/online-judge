@@ -5,8 +5,9 @@ use std::sync::Arc;
 use actix_web::web;
 use chrono::{SecondsFormat, Utc};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::{QueryBuilder, Sqlite};
 
-use crate::routes::{CaseResult, JobRecord, JobSubmission};
+use crate::routes::{CaseResult, JobRecord, JobSubmission, JobsQueryParams};
 
 const DATABASE_NAME: &str = "oj.sqlite3";
 
@@ -28,11 +29,20 @@ pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
         .connect(&db_url) // TODO: Use environment variable
         .await?;
 
-    for sql in &[
+    // Execute PRAGMA statements first (these cannot be run inside a transaction)
+    for pragma_sql in &[
         "PRAGMA foreign_keys = ON;",
         "PRAGMA busy_timeout = 2000;", // 2 seconds timeout for lock contention
         "PRAGMA journal_mode = WAL;",  // Write-Ahead Logging for better concurrency
         "PRAGMA synchronous = NORMAL;", // Balance between safety and performance
+    ] {
+        sqlx::query(pragma_sql).execute(&db_pool).await?;
+    }
+
+    // Use a transaction for table creation and data initialization
+    let mut tx = db_pool.begin().await?;
+
+    for sql in &[
         r"
         CREATE TABLE IF NOT EXISTS users (
             id            INTEGER PRIMARY KEY,
@@ -44,7 +54,7 @@ pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
             created_time  TEXT    NOT NULL,
             updated_time  TEXT    NOT NULL,
             user_id       INTEGER NOT NULL,
-            contest_id    INTEGER,
+            contest_id    INTEGER NOT NULL,
             problem_id    INTEGER NOT NULL,
             source_code   TEXT    NOT NULL,
             language      TEXT    NOT NULL,
@@ -66,8 +76,10 @@ pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
         );",
         "INSERT OR IGNORE INTO users (id, name) VALUES (0, 'root');",
     ] {
-        sqlx::query(sql).execute(&db_pool).await?;
+        sqlx::query(sql).execute(tx.as_mut()).await?;
     }
+
+    tx.commit().await?;
 
     log::info!("Initialized database at {}", db_path.as_ref().display());
 
@@ -75,6 +87,13 @@ pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
 }
 
 pub fn remove_db(db_path: impl AsRef<Path>) {
+    // Remove WAL and SHM files (ignore errors as they might not exist)
+    let wal_path = format!("{}-wal", db_path.as_ref().display());
+    let shm_path = format!("{}-shm", db_path.as_ref().display());
+    let _ = fs::remove_file(wal_path);
+    let _ = fs::remove_file(shm_path);
+
+    // Remove main database file
     if let Err(e) = std::fs::remove_file(&db_path) {
         log::warn!(
             "Unable to remove database at {}: {e}",
@@ -100,7 +119,7 @@ pub fn remove_db(db_path: impl AsRef<Path>) {
 pub async fn create_job(
     body: &web::Json<JobSubmission>,
     pool: &web::Data<SqlitePool>,
-    len: u16,
+    len: u32,
 ) -> sqlx::Result<u32> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
@@ -156,7 +175,7 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
 
     let submission = JobSubmission {
         user_id: job_data.user_id as u32,
-        contest_id: job_data.contest_id.unwrap_or(0) as u32,
+        contest_id: job_data.contest_id as u32,
         problem_id: job_data.problem_id as u32,
         source_code: job_data.source_code,
         language: job_data.language,
@@ -247,7 +266,7 @@ pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> 
         result.updated_time,
         id
     )
-    .execute(&mut *tx)
+    .execute(tx.as_mut())
     .await?;
 
     // Delete existing case results
@@ -257,7 +276,7 @@ pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> 
         "#,
         id
     )
-    .execute(&mut *tx)
+    .execute(tx.as_mut())
     .await?;
 
     // Insert new case results
@@ -274,10 +293,59 @@ pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> 
             case.memory, // memory already in KB
             case.info
         )
-        .execute(&mut *tx)
+        .execute(tx.as_mut())
         .await?;
     }
 
     tx.commit().await?;
     Ok(())
+}
+
+pub async fn fetch_jobs_by_query(
+    query: web::Query<JobsQueryParams>,
+    pool: Arc<SqlitePool>,
+) -> sqlx::Result<Vec<JobRecord>> {
+    let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("SELECT id FROM jobs WHERE 1=1");
+
+    if let Some(user_id) = query.user_id {
+        qb.push(" AND user_id = ").push_bind(user_id);
+    }
+    if let Some(ref user_name) = query.user_name {
+        qb.push(" AND user_id IN (SELECT id FROM users WHERE name = ")
+            .push_bind(user_name)
+            .push(")");
+    }
+    if let Some(contest_id) = query.contest_id {
+        qb.push(" AND contest_id = ").push_bind(contest_id);
+    }
+    if let Some(problem_id) = query.problem_id {
+        qb.push(" AND problem_id = ").push_bind(problem_id);
+    }
+    if let Some(ref language) = query.language {
+        qb.push(" AND language = ").push_bind(language);
+    }
+    if let Some(ref from) = query.from {
+        qb.push(" AND created_time >= ").push_bind(from);
+    }
+    if let Some(ref to) = query.to {
+        qb.push(" AND created_time <= ").push_bind(to);
+    }
+    if let Some(ref state) = query.state {
+        qb.push(" AND state = ").push_bind(state);
+    }
+    if let Some(ref result) = query.result {
+        qb.push(" AND result = ").push_bind(result);
+    }
+    qb.push(" ORDER BY created_time");
+
+    let job_ids = qb
+        .build_query_as::<(u32,)>()
+        .fetch_all(pool.as_ref())
+        .await?;
+    let mut jobs = Vec::new();
+
+    for (id,) in job_ids {
+        jobs.push(fetch_job(id, pool.clone()).await.unwrap());
+    }
+    Ok(jobs)
 }

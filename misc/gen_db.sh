@@ -5,6 +5,8 @@ DB_PATH="data/oj.sqlite3"
 
 mkdir -p data
 
+rm -f "$DB_PATH"
+
 sqlite3 "$DB_PATH" <<EOF
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 2000;
@@ -21,7 +23,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_time  TEXT    NOT NULL,
     updated_time  TEXT    NOT NULL,
     user_id       INTEGER NOT NULL,
-    contest_id    INTEGER,
+    contest_id    INTEGER NOT NULL,
     problem_id    INTEGER NOT NULL,
     source_code   TEXT    NOT NULL,
     language      TEXT    NOT NULL,
