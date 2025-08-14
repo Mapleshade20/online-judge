@@ -6,7 +6,7 @@ mod users;
 pub use jobs::*;
 // pub use users::*;
 
-use actix_web::error::{InternalError, JsonPayloadError};
+use actix_web::error::{InternalError, JsonPayloadError, QueryPayloadError};
 use actix_web::{HttpRequest, HttpResponse, Responder, post};
 use serde::Serialize;
 
@@ -17,6 +17,14 @@ struct ErrorResponse {
 }
 
 pub fn json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> actix_web::Error {
+    let response = HttpResponse::BadRequest().json(ErrorResponse {
+        reason: "ERR_INVALID_ARGUMENT",
+        code: 1,
+    });
+    InternalError::from_response(err, response).into()
+}
+
+pub fn query_error_handler(err: QueryPayloadError, _req: &HttpRequest) -> actix_web::Error {
     let response = HttpResponse::BadRequest().json(ErrorResponse {
         reason: "ERR_INVALID_ARGUMENT",
         code: 1,
