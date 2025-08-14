@@ -1,18 +1,18 @@
 mod get;
 mod post;
-// mod put;
+mod put;
 
 pub use get::{get_job_by_id_handler, get_jobs_handler};
 pub use post::post_job_handler;
-// pub use put::put_job_handler;
+pub use put::put_job_handler;
 
-use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
+use actix_web::{HttpResponse, Responder, get, post, put, web};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tokio::sync::oneshot;
 
-use super::ErrorResponse;
+use super::{ErrorResponse, ErrorResponseWithMessage};
 use crate::config::{LanguageConfig, ProblemConfig};
 use crate::database as db;
 use crate::queue::JobQueue;

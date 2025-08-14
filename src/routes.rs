@@ -16,6 +16,13 @@ struct ErrorResponse {
     code: u32,
 }
 
+#[derive(Serialize)]
+struct ErrorResponseWithMessage {
+    reason: &'static str,
+    code: u32,
+    message: String,
+}
+
 pub fn json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> actix_web::Error {
     let response = HttpResponse::BadRequest().json(ErrorResponse {
         reason: "ERR_INVALID_ARGUMENT",

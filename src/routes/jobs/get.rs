@@ -18,7 +18,7 @@ pub async fn get_jobs_handler(
 
     match jobs {
         Ok(records) => {
-            log::info!("Retrieved {} job records", records.len());
+            log::info!("Got {} job records", records.len());
             HttpResponse::Ok().json(records)
         }
         Err(e) => {
@@ -40,11 +40,19 @@ pub async fn get_job_by_id_handler(
 
     match db::fetch_job(job_id, pool.into_inner()).await {
         Ok(record) => {
-            log::info!("Retrieved job record: {}", record.id);
+            log::info!("Got the record of job {} from database", job_id);
             HttpResponse::Ok().json(record)
         }
+        Err(sqlx::Error::RowNotFound) => {
+            log::info!("Got nothing with job id {} from database", job_id);
+            HttpResponse::NotFound().json(ErrorResponseWithMessage {
+                reason: "ERR_NOT_FOUND",
+                code: 3,
+                message: format!("Job {job_id} not found."),
+            })
+        }
         Err(e) => {
-            log::error!("Failed to retrieve job record: {}", e);
+            log::error!("Failed to retrieve job record from database: {}", e);
             HttpResponse::InternalServerError().json(ErrorResponse {
                 reason: "ERR_EXTERNAL",
                 code: 5,

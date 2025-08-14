@@ -27,7 +27,7 @@ pub async fn post_job_handler(
 
     let job_id = match db::create_job(&body, &pool, total_cases).await {
         Ok(id) => {
-            log::info!("Job submitted successfully, id = {id}");
+            log::info!("Inserted job {id} into databse");
             id
         }
         Err(e) => {
@@ -39,7 +39,24 @@ pub async fn post_job_handler(
         }
     };
 
-    if **blocking {
+    handle_job_submission(
+        job_id,
+        &job_queue,
+        **blocking,
+        body.into_inner(),
+        problem.cases.len(),
+    )
+    .await
+}
+
+pub(super) async fn handle_job_submission(
+    job_id: u32,
+    job_queue: &JobQueue,
+    blocking: bool,
+    submission: JobSubmission,
+    cases_count: usize,
+) -> HttpResponse {
+    if blocking {
         let (tx, rx) = oneshot::channel::<JobRecord>();
         let job_message = JobMessage::Blocking {
             job_id,
@@ -47,11 +64,11 @@ pub async fn post_job_handler(
         };
 
         job_queue.push(job_message).await;
-        log::debug!("Blocking job sent to queue, job_id = {job_id}");
+        log::debug!("Sent blocking job {job_id} to queue");
 
         match rx.await {
             Ok(response) => {
-                log::info!("Job completed successfully, id = {}", response.id);
+                log::info!("Received final result of blocking job {}", response.id);
                 HttpResponse::Ok().json(response)
             }
             Err(e) => {
@@ -66,9 +83,9 @@ pub async fn post_job_handler(
         let job_message = JobMessage::FireAndForget { job_id };
 
         job_queue.push(job_message).await;
-        log::debug!("Non-blocking job sent to queue, job_id = {job_id}");
+        log::debug!("Sent non-blocking job {job_id} to queue");
 
-        let cases = (0..=problem.cases.len()) // 0 is compile case, 1..=N are test cases
+        let cases = (0..=cases_count) // 0 is compile case, 1..=N are test cases
             .map(|i| CaseResult {
                 id: i as u32,
                 result: "Waiting".to_string(),
@@ -82,7 +99,7 @@ pub async fn post_job_handler(
             id: job_id,
             created_time: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
             updated_time: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-            submission: body.into_inner(),
+            submission,
             state: "Queueing".to_string(),
             result: "Waiting".to_string(),
             score: 0.0,
