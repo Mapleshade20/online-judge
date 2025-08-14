@@ -394,3 +394,9 @@ impl TestCase {
         res
     }
 }
+
+impl Drop for TestCase {
+    fn drop(&mut self) {
+        self.kill_server();
+    }
+}

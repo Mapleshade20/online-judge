@@ -50,17 +50,18 @@ pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
         );",
         r"
         CREATE TABLE IF NOT EXISTS jobs (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_time  TEXT    NOT NULL,
-            updated_time  TEXT    NOT NULL,
-            user_id       INTEGER NOT NULL,
-            contest_id    INTEGER NOT NULL,
-            problem_id    INTEGER NOT NULL,
-            source_code   TEXT    NOT NULL,
-            language      TEXT    NOT NULL,
-            state         TEXT    NOT NULL,
-            result        TEXT    NOT NULL,
-            score         REAL    NOT NULL,
+            pk            INTEGER  PRIMARY KEY,
+            id            INTEGER  GENERATED ALWAYS AS (pk - 1) STORED UNIQUE,
+            created_time  TEXT     NOT NULL,
+            updated_time  TEXT     NOT NULL,
+            user_id       INTEGER  NOT NULL,
+            contest_id    INTEGER  NOT NULL,
+            problem_id    INTEGER  NOT NULL,
+            source_code   TEXT     NOT NULL,
+            language      TEXT     NOT NULL,
+            state         TEXT     NOT NULL,
+            result        TEXT     NOT NULL,
+            score         REAL     NOT NULL,
             FOREIGN KEY (user_id)  REFERENCES users (id)
         );",
         r"
@@ -142,7 +143,8 @@ pub async fn create_job(
     .execute(tx.as_mut())
     .await?;
 
-    let job_id = result.last_insert_rowid() as u32;
+    let pk = result.last_insert_rowid() as u32;
+    let job_id = pk - 1; // Since id is generated as pk - 1
 
     for i in 0..len {
         sqlx::query!(
