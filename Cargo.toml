@@ -22,6 +22,7 @@ chrono = "0.4.41"
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = "0.7.16"
 anyhow = "1.0.99"
+libc = "0.2"
 
 [dev-dependencies]
 assert-json-diff = "2.0.2"

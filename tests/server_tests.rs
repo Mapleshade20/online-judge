@@ -93,9 +93,8 @@ fn create_test_config() -> (Arc<ProblemConfig>, Arc<LanguageConfig>) {
     let problems = vec![
         OneProblemConfig {
             id: 0,
-            name: "test_problem_blocking".to_string(),
+            name: "test_problem_1".to_string(),
             judge_type: JudgeType::Standard,
-            nonblocking: Some(false),
             cases: vec![
                 OneCaseConfig {
                     score: 50.0,
@@ -115,9 +114,8 @@ fn create_test_config() -> (Arc<ProblemConfig>, Arc<LanguageConfig>) {
         },
         OneProblemConfig {
             id: 1,
-            name: "test_problem_nonblocking".to_string(),
+            name: "test_problem_2".to_string(),
             judge_type: JudgeType::Standard,
-            nonblocking: Some(true),
             cases: vec![OneCaseConfig {
                 score: 100.0,
                 input_file: "test1.in".to_string(),
@@ -206,6 +204,7 @@ async fn test_post_jobs_nonblocking_success() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     // Start mock judger
     tokio::spawn(mock_judger(job_queue.clone()));
@@ -216,8 +215,9 @@ async fn test_post_jobs_nonblocking_success() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -226,7 +226,7 @@ async fn test_post_jobs_nonblocking_success() {
         "language": "Rust",
         "user_id": 0,
         "contest_id": 0,
-        "problem_id": 1  // nonblocking problem
+        "problem_id": 1
     });
 
     let req = test::TestRequest::post()
@@ -269,6 +269,7 @@ async fn test_post_jobs_blocking_success() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(true);
 
     // Start mock judger
     tokio::spawn(mock_judger(job_queue.clone()));
@@ -279,8 +280,9 @@ async fn test_post_jobs_blocking_success() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -289,7 +291,7 @@ async fn test_post_jobs_blocking_success() {
         "language": "Rust",
         "user_id": 0,
         "contest_id": 0,
-        "problem_id": 0  // blocking problem
+        "problem_id": 0
     });
 
     let req = test::TestRequest::post()
@@ -331,6 +333,7 @@ async fn test_post_jobs_invalid_language() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     let app = test::init_service(
         App::new()
@@ -338,8 +341,9 @@ async fn test_post_jobs_invalid_language() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -370,6 +374,7 @@ async fn test_post_jobs_invalid_problem_id() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     let app = test::init_service(
         App::new()
@@ -377,8 +382,9 @@ async fn test_post_jobs_invalid_problem_id() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -409,6 +415,7 @@ async fn test_post_jobs_invalid_json() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     let app = test::init_service(
         App::new()
@@ -416,8 +423,9 @@ async fn test_post_jobs_invalid_json() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -440,6 +448,7 @@ async fn test_post_jobs_missing_fields() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     let app = test::init_service(
         App::new()
@@ -447,8 +456,9 @@ async fn test_post_jobs_missing_fields() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -476,6 +486,7 @@ async fn test_blocking_job_delayed_response() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(true);
 
     // Mock judger that responds after a delay
     let delayed_queue = job_queue.clone();
@@ -528,8 +539,9 @@ async fn test_blocking_job_delayed_response() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -538,7 +550,7 @@ async fn test_blocking_job_delayed_response() {
         "language": "Rust",
         "user_id": 0,
         "contest_id": 0,
-        "problem_id": 0  // blocking problem
+        "problem_id": 0
     });
 
     let req = test::TestRequest::post()
@@ -562,6 +574,7 @@ async fn test_multiple_languages_support() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     tokio::spawn(mock_judger(job_queue.clone()));
 
@@ -571,8 +584,9 @@ async fn test_multiple_languages_support() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -625,6 +639,7 @@ async fn test_database_persistence() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     tokio::spawn(mock_judger(job_queue.clone()));
 
@@ -634,8 +649,9 @@ async fn test_database_persistence() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -646,7 +662,7 @@ async fn test_database_persistence() {
             "language": "Rust",
             "user_id": i,
             "contest_id": 0,
-            "problem_id": 1  // nonblocking problem
+            "problem_id": 1
         });
 
         println!("Sending request {}: {}", i, request_body);
@@ -703,6 +719,7 @@ async fn test_concurrent_requests() {
     let _guard = TestDbGuard::new(db_path);
     let (problems, languages) = create_test_config();
     let job_queue = Arc::new(JobQueue::new());
+    let blocking = Arc::new(false);
 
     tokio::spawn(mock_judger(job_queue.clone()));
 
@@ -712,8 +729,9 @@ async fn test_concurrent_requests() {
             .app_data(web::Data::from(problems))
             .app_data(web::Data::from(languages))
             .app_data(web::Data::from(job_queue))
+            .app_data(web::Data::from(blocking))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-            .route("/jobs", web::post().to(post_jobs_handler)),
+            .service(post_jobs_handler),
     )
     .await;
 
@@ -726,7 +744,7 @@ async fn test_concurrent_requests() {
             "language": "Rust",
             "user_id": i,
             "contest_id": 0,
-            "problem_id": 1  // nonblocking problem
+            "problem_id": 1
         });
 
         let req = test::TestRequest::post()

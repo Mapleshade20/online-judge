@@ -1,13 +1,13 @@
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tokio::sync::oneshot;
 
+use super::ErrorResponse;
 use crate::config::{LanguageConfig, ProblemConfig};
 use crate::database as db;
 use crate::queue::JobQueue;
-use crate::routes::ErrorResponse;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JobSubmission {
@@ -58,11 +58,13 @@ impl JobMessage {
     }
 }
 
+#[post("/jobs")]
 pub async fn post_jobs_handler(
     job_queue: web::Data<JobQueue>,
     pool: web::Data<SqlitePool>,
     problems: web::Data<ProblemConfig>,
     languages: web::Data<LanguageConfig>,
+    blocking: web::Data<bool>,
     body: web::Json<JobSubmission>,
 ) -> impl Responder {
     let found_language = languages.as_ref().iter().any(|l| l.name == body.language);
@@ -95,9 +97,30 @@ pub async fn post_jobs_handler(
         }
     };
 
-    let non_blocking = problem.nonblocking.unwrap_or(false);
+    if **blocking {
+        let (tx, rx) = oneshot::channel::<JobRecord>();
+        let job_message = JobMessage::Blocking {
+            job_id,
+            responder: tx,
+        };
 
-    if non_blocking {
+        job_queue.push(job_message).await;
+        log::debug!("Blocking job sent to queue, job_id = {job_id}");
+
+        match rx.await {
+            Ok(response) => {
+                log::info!("Job completed successfully, id = {}", response.id);
+                HttpResponse::Ok().json(response)
+            }
+            Err(e) => {
+                log::error!("Failed to receive job response: {e}");
+                HttpResponse::InternalServerError().json(ErrorResponse {
+                    reason: "ERR_INTERNAL",
+                    code: 6,
+                })
+            }
+        }
+    } else {
         let job_message = JobMessage::FireAndForget { job_id };
 
         job_queue.push(job_message).await;
@@ -123,28 +146,5 @@ pub async fn post_jobs_handler(
             score: 0.0,
             cases,
         })
-    } else {
-        let (tx, rx) = oneshot::channel::<JobRecord>();
-        let job_message = JobMessage::Blocking {
-            job_id,
-            responder: tx,
-        };
-
-        job_queue.push(job_message).await;
-        log::debug!("Blocking job sent to queue, job_id = {job_id}");
-
-        match rx.await {
-            Ok(response) => {
-                log::info!("Job completed successfully, id = {}", response.id);
-                HttpResponse::Ok().json(response)
-            }
-            Err(e) => {
-                log::error!("Failed to receive job response: {e}");
-                HttpResponse::InternalServerError().json(ErrorResponse {
-                    reason: "ERR_INTERNAL",
-                    code: 6,
-                })
-            }
-        }
     }
 }
