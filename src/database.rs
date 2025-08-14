@@ -164,6 +164,7 @@ pub async fn create_job(
 }
 
 pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord> {
+    log::debug!("Trying to fetch job {id} full record from database");
     let job_data = sqlx::query!(
         r#"
         SELECT user_id, contest_id, problem_id, source_code, language, state, result, score, created_time, updated_time
@@ -207,6 +208,7 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
         })
         .collect();
 
+    log::debug!("Fetched job {id} full record from database");
     Ok(JobRecord {
         id,
         created_time: job_data.created_time,
@@ -252,7 +254,43 @@ pub async fn update_job_to_running(id: u32, pool: Arc<SqlitePool>) -> sqlx::Resu
     Ok(())
 }
 
+/// Returns the number of cases reverted
+pub async fn revert_job_to_queueing(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<usize> {
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let mut tx = pool.begin().await?;
+
+    // Revert job state, result and score
+    sqlx::query!(
+        r#"
+        UPDATE jobs 
+        SET state = 'Queueing', result = 'Waiting', score = 0.0, updated_time = ?
+        WHERE id = ?
+        "#,
+        now,
+        id
+    )
+    .execute(tx.as_mut())
+    .await?;
+
+    // Revert each case
+    let reverted_cases = sqlx::query!(
+        r#"
+        UPDATE job_case 
+        SET result = 'Waiting', time_us = 0, memory_kb = 0, info = ''
+        WHERE job_id = ?
+        "#,
+        id
+    )
+    .execute(tx.as_mut())
+    .await?
+    .rows_affected();
+
+    tx.commit().await?;
+    Ok(reverted_cases as usize)
+}
+
 pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> sqlx::Result<()> {
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut tx = pool.begin().await?;
 
     // Update job record
@@ -265,7 +303,7 @@ pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> 
         result.state,
         result.result,
         result.score,
-        result.updated_time,
+        now,
         id
     )
     .execute(tx.as_mut())

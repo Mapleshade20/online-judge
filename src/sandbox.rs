@@ -10,7 +10,7 @@ use std::process::Command;
 use std::time::Instant;
 
 use anyhow::{anyhow, bail};
-use chrono::{Local, SecondsFormat, Utc};
+use chrono::Local;
 
 use crate::config::{JudgeType, OneCaseConfig, OneLanguageConfig, OneProblemConfig, Second};
 use crate::routes::JobRecord;
@@ -106,9 +106,6 @@ impl Sandbox {
 
         // Step 2: Run test cases
         self.run_test_cases(&mut job, &problem, compilation_result.cache_dir)?;
-
-        // Step 3: Finalize job results
-        self.finalize_job_results(&mut job);
 
         Ok(job)
     }

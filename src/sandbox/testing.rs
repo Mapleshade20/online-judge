@@ -44,6 +44,7 @@ impl Sandbox {
 
         job.score = total_score;
         job.result = first_error.map_or("Accepted".to_string(), |e| e.to_string());
+        job.state = "Finished".to_string();
 
         Ok(())
     }
@@ -80,6 +81,11 @@ impl Sandbox {
         } else {
             result.error = Some("System Error");
             result.info = "Failed to read meta file".to_string();
+        }
+
+        // Use external wall timer to modify the result
+        if elapsed_time.as_micros() as u32 > case_config.time_limit.0 {
+            result.error = Some("Time Limit Exceeded");
         }
 
         // Read program output if no error occurred
@@ -225,12 +231,6 @@ impl Sandbox {
         };
 
         Ok(is_correct)
-    }
-
-    /// Finalizes the job results
-    pub(super) fn finalize_job_results(&self, job: &mut JobRecord) {
-        job.state = "Finished".to_string();
-        job.updated_time = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     }
 }
 
