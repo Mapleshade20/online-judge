@@ -2,7 +2,7 @@ mod contests;
 mod jobs;
 mod users;
 
-// pub use contests::*;
+pub use contests::*;
 pub use jobs::*;
 pub use users::*;
 
