@@ -6,6 +6,8 @@ DB_PATH="data/oj.sqlite3"
 mkdir -p data
 
 rm -f "$DB_PATH"
+rm -f "$DB_PATH-shm"
+rm -f "$DB_PATH-wal"
 
 sqlite3 "$DB_PATH" <<EOF
 PRAGMA foreign_keys = ON;
@@ -13,13 +15,14 @@ PRAGMA busy_timeout = 2000;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id            INTEGER PRIMARY KEY,
     name          TEXT    NOT NULL UNIQUE
 );
 
-CREATE TABLE IF NOT EXISTS jobs (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE jobs (
+    pk            INTEGER PRIMARY KEY,
+    id            INTEGER GENERATED ALWAYS AS (pk - 1) STORED UNIQUE,
     created_time  TEXT    NOT NULL,
     updated_time  TEXT    NOT NULL,
     user_id       INTEGER NOT NULL,
