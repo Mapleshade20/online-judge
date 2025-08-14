@@ -22,10 +22,29 @@ pub async fn post_job_handler(
         });
     }
 
+    // Check if user ID exists
+    let user_exists = match db::find_user(body.user_id, pool.clone().into_inner()).await {
+        Ok(exists) => exists,
+        Err(e) => {
+            log::error!("Failed to check user existence: {e}");
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                reason: "ERR_EXTERNAL",
+                code: 5,
+            });
+        }
+    };
+
+    if !user_exists {
+        return HttpResponse::NotFound().json(ErrorResponse {
+            reason: "ERR_NOT_FOUND",
+            code: 3,
+        });
+    }
+
     let problem = problems.as_ref().get(found_problem_idx.unwrap()).unwrap();
     let total_cases = 1 + problem.cases.len() as u32; // Compile is case 0
 
-    let job_id = match db::create_job(&body, &pool, total_cases).await {
+    let job_id = match db::create_job(&body, pool.into_inner(), total_cases).await {
         Ok(id) => {
             log::info!("Inserted job {id} into databse");
             id

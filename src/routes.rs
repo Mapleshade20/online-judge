@@ -4,7 +4,7 @@ mod users;
 
 // pub use contests::*;
 pub use jobs::*;
-// pub use users::*;
+pub use users::*;
 
 use actix_web::error::{InternalError, JsonPayloadError, QueryPayloadError};
 use actix_web::{HttpRequest, HttpResponse, Responder, post};

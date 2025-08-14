@@ -6,8 +6,8 @@ use sqlx::sqlite::SqlitePool;
 use crate::config::{LanguageConfig, ProblemConfig, ServerConfig};
 use crate::queue::JobQueue;
 use crate::routes::{
-    delete_job_handler, exit, get_job_by_id_handler, get_jobs_handler, json_error_handler,
-    post_job_handler, put_job_handler, query_error_handler,
+    delete_job_handler, exit, get_job_by_id_handler, get_jobs_handler, get_users_handler,
+    json_error_handler, post_job_handler, post_users_handler, put_job_handler, query_error_handler,
 };
 
 pub fn build_server(
@@ -38,6 +38,8 @@ pub fn build_server(
             .service(get_jobs_handler)
             .service(put_job_handler)
             .service(delete_job_handler)
+            .service(get_users_handler)
+            .service(post_users_handler)
             .service(exit)
     })
     .bind((

@@ -7,7 +7,7 @@ use chrono::{SecondsFormat, Utc};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Sqlite};
 
-use crate::routes::{CaseResult, JobRecord, JobSubmission, JobsQueryParams};
+use crate::routes::{CaseResult, JobRecord, JobSubmission, JobsQueryParams, User};
 
 const DATABASE_NAME: &str = "oj.sqlite3";
 
@@ -119,7 +119,7 @@ pub fn remove_db(db_path: impl AsRef<Path>) {
 /// - If committing the transaction fails.
 pub async fn create_job(
     body: &web::Json<JobSubmission>,
-    pool: &web::Data<SqlitePool>,
+    pool: Arc<SqlitePool>,
     len: u32,
 ) -> sqlx::Result<u32> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
@@ -167,6 +167,19 @@ pub async fn find_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<bool> {
     let result = sqlx::query!(
         r#"
         SELECT 1 as "exists_flag: i32" FROM jobs WHERE id = ?
+        "#,
+        id
+    )
+    .fetch_optional(pool.as_ref())
+    .await?;
+
+    Ok(result.is_some())
+}
+
+pub async fn find_user(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<bool> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 1 as "exists_flag: i32" FROM users WHERE id = ?
         "#,
         id
     )
@@ -434,4 +447,101 @@ pub async fn fetch_jobs_by_query(
         jobs.push(fetch_job(id, pool.clone()).await.unwrap());
     }
     Ok(jobs)
+}
+
+/// Get all users from the database
+pub async fn get_users(pool: Arc<SqlitePool>) -> sqlx::Result<Vec<User>> {
+    let users = sqlx::query_as!(
+        User,
+        r#"
+        SELECT id as "id: u32", name
+        FROM users
+        ORDER BY id
+        "#
+    )
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    Ok(users)
+}
+
+/// Check if a user name already exists for a different user ID
+pub async fn user_name_exists(
+    name: &str,
+    exclude_id: Option<u32>,
+    pool: Arc<SqlitePool>,
+) -> sqlx::Result<bool> {
+    if let Some(id) = exclude_id {
+        let result = sqlx::query!(
+            r#"
+            SELECT 1 as "exists_flag: i32" FROM users WHERE name = ? AND id != ?
+            "#,
+            name,
+            id
+        )
+        .fetch_optional(pool.as_ref())
+        .await?;
+        Ok(result.is_some())
+    } else {
+        let result = sqlx::query!(
+            r#"
+            SELECT 1 as "exists_flag: i32" FROM users WHERE name = ?
+            "#,
+            name
+        )
+        .fetch_optional(pool.as_ref())
+        .await?;
+        Ok(result.is_some())
+    }
+}
+
+/// Get the next available user ID
+pub async fn get_next_user_id(pool: Arc<SqlitePool>) -> sqlx::Result<u32> {
+    let max_id = sqlx::query!(
+        r#"
+        SELECT MAX(id) as max_id FROM users
+        "#
+    )
+    .fetch_one(pool.as_ref())
+    .await?;
+
+    Ok(max_id.max_id.map(|id| id + 1).unwrap_or(0) as u32)
+}
+
+/// Create a new user with auto-generated ID
+pub async fn create_user(name: &str, pool: Arc<SqlitePool>) -> sqlx::Result<User> {
+    let new_id = get_next_user_id(pool.clone()).await?;
+
+    sqlx::query!(
+        r#"
+        INSERT INTO users (id, name) VALUES (?, ?)
+        "#,
+        new_id,
+        name
+    )
+    .execute(pool.as_ref())
+    .await?;
+
+    Ok(User {
+        id: new_id,
+        name: name.to_string(),
+    })
+}
+
+/// Update an existing user
+pub async fn update_user(id: u32, name: &str, pool: Arc<SqlitePool>) -> sqlx::Result<User> {
+    sqlx::query!(
+        r#"
+        UPDATE users SET name = ? WHERE id = ?
+        "#,
+        name,
+        id
+    )
+    .execute(pool.as_ref())
+    .await?;
+
+    Ok(User {
+        id,
+        name: name.to_string(),
+    })
 }
