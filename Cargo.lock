@@ -1425,6 +1425,7 @@ dependencies = [
  "directories",
  "env_logger",
  "lazy_static",
+ "libc",
  "log",
  "pretty_assertions",
  "reqwest",

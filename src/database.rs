@@ -8,6 +8,8 @@ use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 use crate::routes::{CaseResult, JobRecord, JobSubmission};
 
+const DATABASE_NAME: &str = "oj.sqlite3";
+
 pub fn get_db_path() -> PathBuf {
     use directories::ProjectDirs;
 
@@ -16,7 +18,7 @@ pub fn get_db_path() -> PathBuf {
 
     fs::create_dir_all(data_dir).expect("Failed to create local data dir");
 
-    data_dir.join("oj.sqlite3")
+    data_dir.join(DATABASE_NAME)
 }
 
 pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {

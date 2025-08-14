@@ -9,17 +9,21 @@ pub struct CliArgs {
     pub config_path: String,
 
     /// Whether to remove the existing database
-    #[arg(long = "flush-data", short = 'f', default_value_t = false)]
+    #[arg(long = "flush-data", short = 'f')]
     pub flush_data: bool,
 
     /// Number of threads to judge concurrently
     #[arg(long, default_value_t = 1)]
     pub threads: u8,
+
+    /// Verbose logging
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 impl CliArgs {
     /// Load the configuration from the specified file
-    pub fn to_config(&self) -> std::io::Result<Config> {
+    pub fn read_config(&self) -> std::io::Result<Config> {
         let file = std::fs::File::open(&self.config_path)?;
         let reader = std::io::BufReader::new(file);
         serde_json::from_reader(reader).map_err(|e| e.into())
@@ -37,6 +41,7 @@ pub struct Config {
 pub struct ServerConfig {
     pub bind_address: Option<String>,
     pub bind_port: Option<u16>,
+    pub blocking: Option<bool>,
 }
 
 pub type ProblemConfig = Vec<OneProblemConfig>;
@@ -48,7 +53,6 @@ pub struct OneProblemConfig {
     pub name: String,
     #[serde(flatten)]
     pub judge_type: JudgeType,
-    pub nonblocking: Option<bool>,
     // pub misc: Option<serde_json::Value>,
     pub cases: Vec<OneCaseConfig>,
 }

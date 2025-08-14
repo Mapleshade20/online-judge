@@ -1,14 +1,14 @@
 {
   "server": {
     "bind_address": "127.0.0.1",
-    "bind_port": 12345
+    "bind_port": 12345,
+    "nonblocking": true
   },
   "problems": [
     {
       "id": 0,
       "name": "hello_world",
       "type": "standard",
-      "nonblocking": true,
       "misc": {},
       "cases": [
         {

@@ -1,3 +1,4 @@
+use std::process::Command;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -10,31 +11,61 @@ use oj::queue::JobQueue;
 use oj::web_server::build_server;
 use oj::worker::worker;
 
+/// Check if a command exists in the system PATH
+fn check_command_exists(command: &str) -> bool {
+    Command::new("which")
+        .arg(command)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+/// Check if the current user is root and warn if so
+fn check_running_user() {
+    if std::env::var("USER").unwrap_or_default() == "root"
+        || std::env::var("LOGNAME").unwrap_or_default() == "root"
+        || unsafe { libc::getuid() } == 0
+    {
+        log::warn!("WARNING: Running as root user is not recommended for security reasons!");
+        log::warn!("Please consider running this application with a non-privileged user account.");
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-
-    // TODO: "isolate" existence check
-    // TODO: running user check
-
-    let db_path = db::get_db_path();
     let cli = CliArgs::parse();
     let n_threads = cli.threads;
-
     if n_threads == 0 {
         panic!("The number of worker threads must not be 0");
     }
+    let log_level = if cli.verbose { "debug" } else { "info" };
+
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or(log_level));
+
+    // Check if required commands exist
+    if !check_command_exists("isolate") {
+        log::error!("Required command 'isolate' not found. Please check out installation guide.");
+        std::process::exit(1);
+    }
+
+    if !check_command_exists("sqlite3") {
+        log::error!("Required command 'sqlite3' not found. Please install SQLite3.");
+        std::process::exit(1);
+    }
+
+    // Check running user and warn if running as root
+    check_running_user();
 
     let Config {
         server: server_config,
         problems: problem_config,
         languages: language_config,
-    } = cli.to_config().expect("Failed to load configuration");
+    } = cli.read_config().expect("Failed to load configuration");
 
+    let db_path = db::get_db_path();
     if cli.flush_data {
         db::remove_db(&db_path);
     }
-
     let db_pool = db::init_db(&db_path)
         .await
         .expect("Failed to initialize database");

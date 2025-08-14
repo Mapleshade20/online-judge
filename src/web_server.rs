@@ -18,6 +18,7 @@ pub fn build_server(
     let problems = web::Data::from(problems);
     let languages = web::Data::from(languages);
     let job_queue = web::Data::from(job_queue); // Construct directly from Arc
+    let blocking = web::Data::new(server_config.blocking.unwrap_or(false));
 
     let server = HttpServer::new(move || {
         App::new()
@@ -25,9 +26,10 @@ pub fn build_server(
             .app_data(problems.clone())
             .app_data(languages.clone())
             .app_data(job_queue.clone())
+            .app_data(blocking.clone())
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .wrap(middleware::Logger::default())
-            .service(web::resource("/jobs").route(web::post().to(post_jobs_handler)))
+            .service(post_jobs_handler)
             .service(exit)
     })
     .bind((
