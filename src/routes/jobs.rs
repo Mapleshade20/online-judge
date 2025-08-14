@@ -1,12 +1,14 @@
+mod delete;
 mod get;
 mod post;
 mod put;
 
+pub use delete::delete_job_handler;
 pub use get::{get_job_by_id_handler, get_jobs_handler};
 pub use post::post_job_handler;
 pub use put::put_job_handler;
 
-use actix_web::{HttpResponse, Responder, get, post, put, web};
+use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
