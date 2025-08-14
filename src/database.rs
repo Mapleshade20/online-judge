@@ -163,6 +163,19 @@ pub async fn create_job(
     Ok(job_id)
 }
 
+pub async fn find_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<bool> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 1 as "exists_flag: i32" FROM jobs WHERE id = ?
+        "#,
+        id
+    )
+    .fetch_optional(pool.as_ref())
+    .await?;
+
+    Ok(result.is_some())
+}
+
 pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord> {
     log::debug!("Trying to fetch job {id} full record from database");
     let job_data = sqlx::query!(
@@ -244,6 +257,39 @@ pub async fn update_job_to_running(id: u32, pool: Arc<SqlitePool>) -> sqlx::Resu
         UPDATE job_case 
         SET result = 'Running'
         WHERE job_id = ? AND case_index = 0
+        "#,
+        id
+    )
+    .execute(tx.as_mut())
+    .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn update_job_to_canceled(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<()> {
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let mut tx = pool.begin().await?;
+
+    // Update job state and result to Canceled
+    sqlx::query!(
+        r#"
+        UPDATE jobs 
+        SET state = 'Canceled', result = 'Skipped', updated_time = ?
+        WHERE id = ?
+        "#,
+        now,
+        id
+    )
+    .execute(tx.as_mut())
+    .await?;
+
+    // Update all case results to Canceled
+    sqlx::query!(
+        r#"
+        UPDATE job_case 
+        SET result = 'Skipped'
+        WHERE job_id = ?
         "#,
         id
     )
