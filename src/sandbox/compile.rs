@@ -115,11 +115,23 @@ impl Sandbox {
         cache_dir: &PathBuf,
         executable_name: &str,
     ) -> anyhow::Result<bool> {
+        let mut result = TestCaseResult {
+            time: 0,
+            memory: 0,
+            error: None,
+            info: String::new(),
+            stdout_content: String::new(),
+        };
+
+        // Read meta file for compilation information
+        let meta_content = fs::read_to_string(&paths.meta)?;
+        self.process_meta_content(&meta_content, &mut result);
+
         // Record compilation output
         job.cases[0].info = fs::read_to_string(&paths.stdout).unwrap_or_default();
+        job.cases[0].time = result.time;
+        job.cases[0].memory = result.memory;
 
-        // Check compilation status
-        let meta_content = fs::read_to_string(&paths.meta)?;
         if meta_content.contains("status") || !paths.executable.exists() {
             job.cases[0].result = "Compilation Error".to_string();
             job.result = "Compilation Error".to_string();

@@ -12,7 +12,9 @@ use std::time::Instant;
 use anyhow::{anyhow, bail};
 use chrono::Local;
 
-use crate::config::{JudgeType, OneCaseConfig, OneLanguageConfig, OneProblemConfig, Second};
+use crate::config::{
+    JudgeType, MicroSecond, OneCaseConfig, OneLanguageConfig, OneProblemConfig, Second,
+};
 use crate::routes::JobRecord;
 
 // Sandbox configuration constants

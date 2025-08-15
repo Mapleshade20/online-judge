@@ -68,7 +68,7 @@ impl Sandbox {
 
         // Set result template
         let mut result = TestCaseResult {
-            time: elapsed_time.as_micros() as u32,
+            time: 0,
             memory: 0,
             error: None,
             info: String::new(),
@@ -85,6 +85,7 @@ impl Sandbox {
 
         // Use external wall timer to modify the result
         if elapsed_time.as_micros() as u32 > case_config.time_limit.0 {
+            result.time = elapsed_time.as_micros() as u32;
             result.error = Some("Time Limit Exceeded");
         }
 
@@ -178,7 +179,7 @@ impl Sandbox {
     }
 
     /// Processes the meta file content and updates the test result
-    fn process_meta_content(&self, meta_content: &str, result: &mut TestCaseResult) {
+    pub(super) fn process_meta_content(&self, meta_content: &str, result: &mut TestCaseResult) {
         for line in meta_content.lines() {
             if let Some((key, value)) = line.split_once(':') {
                 match key {
@@ -202,6 +203,11 @@ impl Sandbox {
                     }
                     "message" => {
                         result.info = value.to_string();
+                    }
+                    "time-wall" => {
+                        if let Ok(secs) = value.parse::<f64>() {
+                            result.time = MicroSecond::from(Second(secs)).0;
+                        }
                     }
                     _ => {}
                 }
