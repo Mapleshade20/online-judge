@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT * FROM jobs WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "pk",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_time",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_time",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "contest_id",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "problem_id",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "source_code",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "language",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "state",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "result",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "score",
+        "ordinal": 11,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c979b871e0c0d9fe0a7cdbc42a1536be3ea59c3768c68ca0e850ff73ff9b16da"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO job_case (job_id, case_index, result, time_us, memory_kb)\n            VALUES (?, ?, 'Waiting', 0, 0)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "49f5747348e09a6cf708f88993422ee739a4e95cdea89266ee29a187df0cac2a"
+}
