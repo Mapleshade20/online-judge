@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT 1 as \"exists_flag: i32\" FROM jobs WHERE id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists_flag: i32",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "422d659f12df7f1478aaf88d239b7063b06da0c24f3da1a94bc17519b8d965f3"
+}

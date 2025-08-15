@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT MAX(id) as max_id FROM users\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "max_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "fe725baef9d626c48b5c4e2497091af0fd6945ced439c3d67d586243bc50f6df"
+}

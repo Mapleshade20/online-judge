@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE job_case \n        SET result = 'Running'\n        WHERE job_id = ? AND case_index = 0\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ebffef95070c5cd2b5d59605eed8e7e9f1220ee6e6d8b458b94ddf9329d2e004"
+}

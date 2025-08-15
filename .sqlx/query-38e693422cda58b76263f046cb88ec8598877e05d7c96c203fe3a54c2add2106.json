@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE jobs \n        SET state = 'Canceled', result = 'Skipped', updated_time = ?\n        WHERE id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "38e693422cda58b76263f046cb88ec8598877e05d7c96c203fe3a54c2add2106"
+}

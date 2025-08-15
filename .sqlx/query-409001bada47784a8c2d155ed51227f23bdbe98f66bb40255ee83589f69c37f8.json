@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO jobs (user_id, contest_id, problem_id, source_code, language, state, result, score, created_time, updated_time)\n        VALUES (?, ?, ?, ?, ?, 'Queueing', 'Waiting', 0.0, ?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "409001bada47784a8c2d155ed51227f23bdbe98f66bb40255ee83589f69c37f8"
+}

@@ -2,7 +2,7 @@ use clap::Parser;
 use serde::Deserialize;
 
 #[derive(Parser)]
-#[command(name = "oj", version = "1.0", about, long_about = None)]
+#[command(name = "oj", version = "0.1.0", about, long_about = None)]
 pub struct CliArgs {
     /// Path to the configuration file
     #[arg(long = "config", short = 'c')]
@@ -13,7 +13,7 @@ pub struct CliArgs {
     pub flush_data: bool,
 
     /// Number of threads to judge concurrently
-    #[arg(long, default_value_t = 1)]
+    #[arg(short, long, default_value_t = 2)]
     pub threads: u8,
 
     /// Verbose logging

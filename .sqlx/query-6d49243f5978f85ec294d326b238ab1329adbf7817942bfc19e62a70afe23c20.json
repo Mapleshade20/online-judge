@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE job_case \n        SET result = 'Skipped'\n        WHERE job_id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "6d49243f5978f85ec294d326b238ab1329adbf7817942bfc19e62a70afe23c20"
+}
