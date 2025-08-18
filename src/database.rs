@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use actix_web::web;
-use chrono::{SecondsFormat, Utc};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Sqlite};
 
+use crate::create_timestamp;
 use crate::routes::{
     CaseResult, JobRecord, JobSubmission, JobsQueryParams, RanklistEntry, User, UserScore,
 };
@@ -28,8 +28,9 @@ pub fn get_db_path() -> PathBuf {
 pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
     let db_url = format!("sqlite://{}?mode=rwc", db_path.as_ref().display()); // rwc = read/write/create
     let db_pool = SqlitePoolOptions::new()
-        .max_connections(2)
-        .connect(&db_url) // TODO: Use environment variable
+        .max_connections(1)
+        .min_connections(0) // Allow pool to shrink when idle
+        .connect(&db_url)
         .await?;
 
     // Execute PRAGMA statements first (these cannot be run inside a transaction)
@@ -125,7 +126,7 @@ pub async fn create_job(
     pool: Arc<SqlitePool>,
     len: u32,
 ) -> sqlx::Result<u32> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = create_timestamp();
 
     // Use a transaction for better error handling and potential future batch operations
     let mut tx = pool.begin().await?;
@@ -226,16 +227,17 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
     .fetch_all(pool.as_ref())
     .await?;
 
-    let cases = case_data
-        .into_iter()
-        .map(|case| CaseResult {
+    // Pre-allocate the cases vector with the exact size needed
+    let mut cases = Vec::with_capacity(case_data.len());
+    for case in case_data {
+        cases.push(CaseResult {
             id: case.case_index as u32,
             result: case.result,
             time: case.time_us as u32,
             memory: case.memory_kb as u32, // memory in KB
             info: case.info.unwrap_or_default(),
-        })
-        .collect();
+        });
+    }
 
     log::debug!("Fetched job {id} full record from database");
     Ok(JobRecord {
@@ -251,7 +253,7 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
 }
 
 pub async fn update_job_to_running(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<()> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Update job state and result to Running
@@ -284,7 +286,7 @@ pub async fn update_job_to_running(id: u32, pool: Arc<SqlitePool>) -> sqlx::Resu
 }
 
 pub async fn update_job_to_canceled(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<()> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Update job state and result to Canceled
@@ -318,7 +320,7 @@ pub async fn update_job_to_canceled(id: u32, pool: Arc<SqlitePool>) -> sqlx::Res
 
 /// Returns the number of cases reverted
 pub async fn revert_job_to_queueing(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<usize> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Revert job state, result and score
@@ -352,7 +354,7 @@ pub async fn revert_job_to_queueing(id: u32, pool: Arc<SqlitePool>) -> sqlx::Res
 }
 
 pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> sqlx::Result<()> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Update job record

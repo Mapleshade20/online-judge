@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::{App, HttpServer, dev::Server, middleware, web};
 use sqlx::sqlite::SqlitePool;
@@ -31,7 +32,11 @@ pub fn build_server(
             .app_data(languages.clone())
             .app_data(job_queue.clone())
             .app_data(blocking.clone())
-            .app_data(web::JsonConfig::default().error_handler(json_error_handler))
+            .app_data(
+                web::JsonConfig::default()
+                    .limit(1024 * 1024) // 1MB limit to prevent excessive memory usage
+                    .error_handler(json_error_handler),
+            )
             .app_data(web::QueryConfig::default().error_handler(query_error_handler))
             .wrap(middleware::Logger::default())
             .service(post_job_handler)
@@ -50,7 +55,11 @@ pub fn build_server(
             .unwrap_or("127.0.0.1".to_string()),
         server_config.bind_port.unwrap_or(12345),
     ))?
-    .workers(5) // TODO: examine the server's internal workers count
+    .workers(3)
+    .max_connections(1000) // Limit concurrent connections
+    .client_request_timeout(Duration::from_secs(5))
+    .client_disconnect_timeout(Duration::from_secs(1))
+    .keep_alive(Duration::from_secs(5))
     .run();
 
     Ok(server)
