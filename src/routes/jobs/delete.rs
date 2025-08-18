@@ -7,7 +7,7 @@ pub async fn delete_job_handler(
     path: web::Path<(u32,)>,
 ) -> impl Responder {
     let job_id = path.into_inner().0;
-    if job_queue.cancel_job(job_id).await {
+    if job_queue.cancel_job(job_id) {
         match db::update_job_to_canceled(job_id, pool.into_inner()).await {
             Ok(_) => HttpResponse::Ok().finish(),
             Err(e) => {
