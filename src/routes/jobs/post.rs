@@ -82,7 +82,7 @@ pub(super) async fn handle_job_submission(
             responder: tx,
         };
 
-        job_queue.push(job_message).await;
+        job_queue.push(job_message);
         log::debug!("Sent blocking job {job_id} to queue");
 
         match rx.await {
@@ -101,7 +101,7 @@ pub(super) async fn handle_job_submission(
     } else {
         let job_message = JobMessage::FireAndForget { job_id };
 
-        job_queue.push(job_message).await;
+        job_queue.push(job_message);
         log::debug!("Sent non-blocking job {job_id} to queue");
 
         let cases = (0..=cases_count) // 0 is compile case, 1..=N are test cases
