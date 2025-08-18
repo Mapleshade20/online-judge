@@ -1427,6 +1427,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
+ "parking_lot",
  "pretty_assertions",
  "reqwest",
  "serde",

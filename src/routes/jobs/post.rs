@@ -104,23 +104,28 @@ pub(super) async fn handle_job_submission(
         job_queue.push(job_message);
         log::debug!("Sent non-blocking job {job_id} to queue");
 
-        let cases = (0..=cases_count) // 0 is compile case, 1..=N are test cases
-            .map(|i| CaseResult {
+        // Pre-allocate the cases vector with known capacity to avoid reallocations
+        let mut cases = Vec::with_capacity(cases_count + 1);
+        for i in 0..=cases_count {
+            cases.push(CaseResult {
                 id: i as u32,
-                result: "Waiting".to_string(),
+                result: crate::memory_optimization::get_or_create_string("Waiting"),
                 time: 0,
                 memory: 0,
-                info: "".to_string(),
-            })
-            .collect::<Vec<_>>();
+                info: String::new(), // Use String::new() instead of "".to_string()
+            });
+        }
+
+        // Cache the timestamp to avoid multiple UTC calls
+        let now = crate::memory_optimization::create_timestamp();
 
         HttpResponse::Ok().json(JobRecord {
             id: job_id,
-            created_time: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-            updated_time: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+            created_time: now.clone(),
+            updated_time: now,
             submission,
-            state: "Queueing".to_string(),
-            result: "Waiting".to_string(),
+            state: crate::memory_optimization::get_or_create_string("Queueing"),
+            result: crate::memory_optimization::get_or_create_string("Waiting"),
             score: 0.0,
             cases,
         })

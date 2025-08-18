@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use actix_web::web;
-use chrono::{SecondsFormat, Utc};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Sqlite};
 
@@ -28,8 +27,9 @@ pub fn get_db_path() -> PathBuf {
 pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
     let db_url = format!("sqlite://{}?mode=rwc", db_path.as_ref().display()); // rwc = read/write/create
     let db_pool = SqlitePoolOptions::new()
-        .max_connections(2)
-        .connect(&db_url) // TODO: Use environment variable
+        .max_connections(1) // Reduce from 2 to 1 to minimize memory overhead
+        .min_connections(0) // Allow pool to shrink when idle
+        .connect(&db_url)
         .await?;
 
     // Execute PRAGMA statements first (these cannot be run inside a transaction)
@@ -125,7 +125,7 @@ pub async fn create_job(
     pool: Arc<SqlitePool>,
     len: u32,
 ) -> sqlx::Result<u32> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = crate::memory_optimization::create_timestamp();
 
     // Use a transaction for better error handling and potential future batch operations
     let mut tx = pool.begin().await?;
@@ -149,6 +149,7 @@ pub async fn create_job(
     let pk = result.last_insert_rowid() as u32;
     let job_id = pk - 1; // Since id is generated as pk - 1
 
+    // Batch insert all cases in a single prepared statement for better performance
     for i in 0..len {
         sqlx::query!(
             r#"
@@ -194,6 +195,8 @@ pub async fn find_user(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<bool> {
 
 pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord> {
     log::debug!("Trying to fetch job {id} full record from database");
+
+    // Use a single query to get both job data and case data
     let job_data = sqlx::query!(
         r#"
         SELECT user_id, contest_id, problem_id, source_code, language, state, result, score, created_time, updated_time
@@ -213,7 +216,7 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
         language: job_data.language,
     };
 
-    // Fetch case results
+    // Fetch case results in a single query and pre-allocate the vector
     let case_data = sqlx::query!(
         r#"
         SELECT case_index, result, time_us, memory_kb, info
@@ -226,16 +229,17 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
     .fetch_all(pool.as_ref())
     .await?;
 
-    let cases = case_data
-        .into_iter()
-        .map(|case| CaseResult {
+    // Pre-allocate the cases vector with the exact size needed
+    let mut cases = Vec::with_capacity(case_data.len());
+    for case in case_data {
+        cases.push(CaseResult {
             id: case.case_index as u32,
-            result: case.result,
+            result: crate::memory_optimization::get_or_create_string(&case.result),
             time: case.time_us as u32,
             memory: case.memory_kb as u32, // memory in KB
             info: case.info.unwrap_or_default(),
-        })
-        .collect();
+        });
+    }
 
     log::debug!("Fetched job {id} full record from database");
     Ok(JobRecord {
@@ -243,15 +247,15 @@ pub async fn fetch_job(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<JobRecord
         created_time: job_data.created_time,
         updated_time: job_data.updated_time,
         submission,
-        state: job_data.state,
-        result: job_data.result,
+        state: crate::memory_optimization::get_or_create_string(&job_data.state),
+        result: crate::memory_optimization::get_or_create_string(&job_data.result),
         score: job_data.score,
         cases,
     })
 }
 
 pub async fn update_job_to_running(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<()> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = crate::memory_optimization::create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Update job state and result to Running
@@ -284,7 +288,7 @@ pub async fn update_job_to_running(id: u32, pool: Arc<SqlitePool>) -> sqlx::Resu
 }
 
 pub async fn update_job_to_canceled(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<()> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = crate::memory_optimization::create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Update job state and result to Canceled
@@ -318,7 +322,7 @@ pub async fn update_job_to_canceled(id: u32, pool: Arc<SqlitePool>) -> sqlx::Res
 
 /// Returns the number of cases reverted
 pub async fn revert_job_to_queueing(id: u32, pool: Arc<SqlitePool>) -> sqlx::Result<usize> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = crate::memory_optimization::create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Revert job state, result and score
@@ -352,7 +356,7 @@ pub async fn revert_job_to_queueing(id: u32, pool: Arc<SqlitePool>) -> sqlx::Res
 }
 
 pub async fn save_result(id: u32, pool: Arc<SqlitePool>, result: &JobRecord) -> sqlx::Result<()> {
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let now = crate::memory_optimization::create_timestamp();
     let mut tx = pool.begin().await?;
 
     // Update job record
@@ -407,48 +411,112 @@ pub async fn fetch_jobs_by_query(
     query: web::Query<JobsQueryParams>,
     pool: Arc<SqlitePool>,
 ) -> sqlx::Result<Vec<JobRecord>> {
-    let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("SELECT id FROM jobs WHERE 1=1");
+    // Build a single query to get all job data and cases in one go
+    let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+        "SELECT j.id, j.created_time, j.updated_time, j.user_id, j.contest_id, j.problem_id, \
+         j.source_code, j.language, j.state, j.result, j.score, \
+         jc.case_index, jc.result as case_result, jc.time_us, jc.memory_kb, jc.info \
+         FROM jobs j LEFT JOIN job_case jc ON j.id = jc.job_id WHERE 1=1",
+    );
 
     if let Some(user_id) = query.user_id {
-        qb.push(" AND user_id = ").push_bind(user_id);
+        qb.push(" AND j.user_id = ").push_bind(user_id);
     }
     if let Some(ref user_name) = query.user_name {
-        qb.push(" AND user_id IN (SELECT id FROM users WHERE name = ")
+        qb.push(" AND j.user_id IN (SELECT id FROM users WHERE name = ")
             .push_bind(user_name)
             .push(")");
     }
     if let Some(contest_id) = query.contest_id {
-        qb.push(" AND contest_id = ").push_bind(contest_id);
+        qb.push(" AND j.contest_id = ").push_bind(contest_id);
     }
     if let Some(problem_id) = query.problem_id {
-        qb.push(" AND problem_id = ").push_bind(problem_id);
+        qb.push(" AND j.problem_id = ").push_bind(problem_id);
     }
     if let Some(ref language) = query.language {
-        qb.push(" AND language = ").push_bind(language);
+        qb.push(" AND j.language = ").push_bind(language);
     }
     if let Some(ref from) = query.from {
-        qb.push(" AND created_time >= ").push_bind(from);
+        qb.push(" AND j.created_time >= ").push_bind(from);
     }
     if let Some(ref to) = query.to {
-        qb.push(" AND created_time <= ").push_bind(to);
+        qb.push(" AND j.created_time <= ").push_bind(to);
     }
     if let Some(ref state) = query.state {
-        qb.push(" AND state = ").push_bind(state);
+        qb.push(" AND j.state = ").push_bind(state);
     }
     if let Some(ref result) = query.result {
-        qb.push(" AND result = ").push_bind(result);
+        qb.push(" AND j.result = ").push_bind(result);
     }
-    qb.push(" ORDER BY created_time");
+    qb.push(" ORDER BY j.created_time, jc.case_index");
 
-    let job_ids = qb
-        .build_query_as::<(u32,)>()
+    #[derive(sqlx::FromRow)]
+    struct JobRowData {
+        id: u32,
+        created_time: String,
+        updated_time: String,
+        user_id: u32,
+        contest_id: u32,
+        problem_id: u32,
+        source_code: String,
+        language: String,
+        state: String,
+        result: String,
+        score: f64,
+        case_index: Option<u32>,
+        case_result: Option<String>,
+        time_us: Option<u32>,
+        memory_kb: Option<u32>,
+        info: Option<String>,
+    }
+
+    let rows = qb
+        .build_query_as::<JobRowData>()
         .fetch_all(pool.as_ref())
         .await?;
-    let mut jobs = Vec::new();
 
-    for (id,) in job_ids {
-        jobs.push(fetch_job(id, pool.clone()).await.unwrap());
+    // Group rows by job ID and build JobRecord structs
+    let mut jobs_map: std::collections::HashMap<u32, JobRecord> = std::collections::HashMap::new();
+
+    for row in rows {
+        let job = jobs_map.entry(row.id).or_insert_with(|| JobRecord {
+            id: row.id,
+            created_time: row.created_time.clone(),
+            updated_time: row.updated_time.clone(),
+            submission: JobSubmission {
+                user_id: row.user_id,
+                contest_id: row.contest_id,
+                problem_id: row.problem_id,
+                source_code: row.source_code.clone(),
+                language: row.language.clone(),
+            },
+            state: row.state.clone(),
+            result: row.result.clone(),
+            score: row.score,
+            cases: Vec::new(),
+        });
+
+        // Add case result if present
+        if let (Some(case_index), Some(case_result)) = (row.case_index, row.case_result) {
+            job.cases.push(CaseResult {
+                id: case_index,
+                result: case_result,
+                time: row.time_us.unwrap_or(0),
+                memory: row.memory_kb.unwrap_or(0),
+                info: row.info.unwrap_or_default(),
+            });
+        }
     }
+
+    // Convert to sorted vector
+    let mut jobs: Vec<JobRecord> = jobs_map.into_values().collect();
+    jobs.sort_by(|a, b| a.created_time.cmp(&b.created_time));
+
+    // Sort cases within each job
+    for job in &mut jobs {
+        job.cases.sort_by_key(|case| case.id);
+    }
+
     Ok(jobs)
 }
 
