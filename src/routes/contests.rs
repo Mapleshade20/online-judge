@@ -44,7 +44,7 @@ pub async fn get_ranklist_handler(
         return HttpResponse::NotFound().json(ErrorResponseWithMessage {
             reason: "ERR_NOT_FOUND",
             code: 3,
-            message: format!("Contest {} not found.", contest_id),
+            message: format!("Contest {contest_id} not found."),
         });
     }
 
@@ -54,7 +54,7 @@ pub async fn get_ranklist_handler(
             return HttpResponse::BadRequest().json(ErrorResponseWithMessage {
                 reason: "ERR_INVALID_ARGUMENT",
                 code: 1,
-                message: format!("Invalid scoring_rule: {}", rule),
+                message: format!("Invalid scoring_rule: {rule}"),
             });
         }
     }
@@ -65,7 +65,7 @@ pub async fn get_ranklist_handler(
             return HttpResponse::BadRequest().json(ErrorResponseWithMessage {
                 reason: "ERR_INVALID_ARGUMENT",
                 code: 1,
-                message: format!("Invalid tie_breaker: {}", breaker),
+                message: format!("Invalid tie_breaker: {breaker}"),
             });
         }
     }

@@ -18,12 +18,12 @@ pub async fn put_job_handler(
                         job_queue.get_ref(),
                         **blocking,
                         record.submission,
-                        reverted_cases as usize,
+                        reverted_cases,
                     )
                     .await
                 }
                 Err(e) => {
-                    log::error!("Failed to revert job to queueing in database: {}", e);
+                    log::error!("Failed to revert job to queueing in database: {e}");
                     HttpResponse::InternalServerError().json(ErrorResponse {
                         reason: "ERR_EXTERNAL",
                         code: 5,
@@ -44,7 +44,7 @@ pub async fn put_job_handler(
             })
         }
         Err(sqlx::Error::RowNotFound) => {
-            log::info!("Put nothing because job {} was not found", job_id);
+            log::info!("Put nothing because job {job_id} was not found");
             HttpResponse::NotFound().json(ErrorResponseWithMessage {
                 reason: "ERR_NOT_FOUND",
                 code: 3,
@@ -52,7 +52,7 @@ pub async fn put_job_handler(
             })
         }
         Err(e) => {
-            log::error!("Failed to retrieve job state from database: {}", e);
+            log::error!("Failed to retrieve job state from database: {e}");
             HttpResponse::InternalServerError().json(ErrorResponse {
                 reason: "ERR_EXTERNAL",
                 code: 5,

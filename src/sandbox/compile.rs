@@ -70,11 +70,11 @@ impl Sandbox {
         paths: &CompilationPaths,
     ) -> anyhow::Result<()> {
         let sandbox_id = self.id.to_string();
-        let processes_arg = format!("--processes={}", COMPILE_PROCESSES);
-        let open_files_arg = format!("--open-files={}", COMPILE_OPEN_FILES);
-        let fsize_arg = format!("--fsize={}", COMPILE_FILE_SIZE);
-        let wall_time_arg = format!("--wall-time={}", COMPILE_TIME_LIMIT);
-        let memory_arg = format!("--cg-mem={}", COMPILE_MEMORY_LIMIT);
+        let processes_arg = format!("--processes={COMPILE_PROCESSES}");
+        let open_files_arg = format!("--open-files={COMPILE_OPEN_FILES}");
+        let fsize_arg = format!("--fsize={COMPILE_FILE_SIZE}");
+        let wall_time_arg = format!("--wall-time={COMPILE_TIME_LIMIT}");
+        let memory_arg = format!("--cg-mem={COMPILE_MEMORY_LIMIT}");
         let meta_path = paths.meta.to_string_lossy();
         let dir_args = if Path::new("/etc/alternatives").exists() {
             vec!["--dir=/opt/oj", "--dir=/etc/alternatives"]
@@ -112,7 +112,7 @@ impl Sandbox {
         &self,
         job: &mut JobRecord,
         paths: &CompilationPaths,
-        cache_dir: &PathBuf,
+        cache_dir: &Path,
         executable_name: &str,
     ) -> anyhow::Result<bool> {
         let mut result = TestCaseResult {
