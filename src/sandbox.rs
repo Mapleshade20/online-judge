@@ -83,7 +83,7 @@ impl Sandbox {
         let cache_dir = Self::setup_cache_directory(id)?;
         let box_dir = Self::initialize_isolate_sandbox(id)?;
 
-        log::info!("Sandbox {} initialized successfully", id);
+        log::info!("Sandbox {id} initialized successfully");
         Ok(Self {
             id,
             box_dir,

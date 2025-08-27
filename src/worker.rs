@@ -90,7 +90,7 @@ pub async fn worker(
                         }
                     }
                     err => {
-                        log::error!("Spawning job {job_id} failed on worker {id}: {:?}", err);
+                        log::error!("Spawning job {job_id} failed on worker {id}: {err:?}");
                     }
                 }
             }

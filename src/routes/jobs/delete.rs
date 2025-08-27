@@ -37,7 +37,7 @@ pub async fn delete_job_handler(
                 })
             }
             Err(e) => {
-                log::error!("Failed to validate if job exists: {}", e);
+                log::error!("Failed to validate if job exists: {e}");
                 HttpResponse::InternalServerError().json(ErrorResponse {
                     reason: "ERR_EXTERNAL",
                     code: 5,

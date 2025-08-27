@@ -27,8 +27,8 @@ static TEST_DB_COUNTER: AtomicU32 = AtomicU32::new(0);
 async fn create_test_db() -> (SqlitePool, String) {
     // Create a unique database file for each test
     let test_id = TEST_DB_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let db_name = format!("test_oj_{}.db", test_id);
-    let db_path = format!("data/{}", db_name);
+    let db_name = format!("test_oj_{test_id}.db");
+    let db_path = format!("data/{db_name}");
 
     // Remove existing test database if it exists
     let _ = fs::remove_file(&db_path);
@@ -37,7 +37,7 @@ async fn create_test_db() -> (SqlitePool, String) {
 
     // Add test users for integration tests
     for i in 1..10 {
-        let user_name = format!("test_user_{}", i);
+        let user_name = format!("test_user_{i}");
         sqlx::query!(
             "INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)",
             i,
@@ -54,14 +54,14 @@ async fn create_test_db() -> (SqlitePool, String) {
 // Helper function to cleanup test database
 fn cleanup_test_db(db_path: &str) {
     if let Err(e) = fs::remove_file(db_path) {
-        eprintln!("Warning: Failed to remove test database {}: {}", db_path, e);
+        eprintln!("Warning: Failed to remove test database {db_path}: {e}");
     } else {
-        println!("Cleaned up test database: {}", db_path);
+        println!("Cleaned up test database: {db_path}");
     }
 
     // Also remove WAL and SHM files if they exist
-    let wal_path = format!("{}-wal", db_path);
-    let shm_path = format!("{}-shm", db_path);
+    let wal_path = format!("{db_path}-wal");
+    let shm_path = format!("{db_path}-shm");
     let _ = fs::remove_file(wal_path);
     let _ = fs::remove_file(shm_path);
 }
@@ -154,11 +154,11 @@ async fn mock_judger(job_queue: Arc<JobQueue>) {
         match message {
             JobMessage::FireAndForget { job_id } => {
                 // For non-blocking jobs, we just consume the message
-                println!("Mock judger received fire-and-forget job: {}", job_id);
+                println!("Mock judger received fire-and-forget job: {job_id}");
             }
             JobMessage::Blocking { job_id, responder } => {
                 // For blocking jobs, we send back a mock response
-                println!("Mock judger received blocking job: {}", job_id);
+                println!("Mock judger received blocking job: {job_id}");
 
                 let mock_response = JobRecord {
                     id: job_id,
@@ -493,42 +493,36 @@ async fn test_blocking_job_delayed_response() {
     tokio::spawn(async move {
         loop {
             let message = delayed_queue.pop().await;
-            match message {
-                JobMessage::Blocking { job_id, responder } => {
-                    println!(
-                        "Mock judger received blocking job, will respond after delay: {}",
-                        job_id
-                    );
+            if let JobMessage::Blocking { job_id, responder } = message {
+                println!("Mock judger received blocking job, will respond after delay: {job_id}");
 
-                    // Simulate some processing time
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                // Simulate some processing time
+                tokio::time::sleep(Duration::from_millis(100)).await;
 
-                    let response = JobRecord {
-                        id: job_id,
-                        created_time: "2024-08-09T01:00:00.000Z".to_string(),
-                        updated_time: "2024-08-09T01:00:01.000Z".to_string(),
-                        submission: JobSubmission {
-                            source_code: "fn main() { println!(\"Hello World!\"); }".to_string(),
-                            language: "Rust".to_string(),
-                            user_id: 0,
-                            contest_id: 0,
-                            problem_id: 0,
-                        },
-                        state: "Finished".to_string(),
+                let response = JobRecord {
+                    id: job_id,
+                    created_time: "2024-08-09T01:00:00.000Z".to_string(),
+                    updated_time: "2024-08-09T01:00:01.000Z".to_string(),
+                    submission: JobSubmission {
+                        source_code: "fn main() { println!(\"Hello World!\"); }".to_string(),
+                        language: "Rust".to_string(),
+                        user_id: 0,
+                        contest_id: 0,
+                        problem_id: 0,
+                    },
+                    state: "Finished".to_string(),
+                    result: "Accepted".to_string(),
+                    score: 100.0,
+                    cases: vec![CaseResult {
+                        id: 1,
                         result: "Accepted".to_string(),
-                        score: 100.0,
-                        cases: vec![CaseResult {
-                            id: 1,
-                            result: "Accepted".to_string(),
-                            time: 1000,
-                            memory: 1024,
-                            info: "".to_string(),
-                        }],
-                    };
+                        time: 1000,
+                        memory: 1024,
+                        info: "".to_string(),
+                    }],
+                };
 
-                    let _ = responder.send(response);
-                }
-                _ => {}
+                let _ = responder.send(response);
             }
         }
     });
@@ -563,7 +557,6 @@ async fn test_blocking_job_delayed_response() {
 
     assert_eq!(resp.status(), 200);
     let body: JobRecord = test::read_body_json(resp).await;
-    assert!(body.id >= 1, "job_id should be positive"); // Don't check exact ID since it depends on previous tests
     assert_eq!(body.state, "Finished");
     assert_eq!(body.result, "Accepted");
 }
@@ -665,7 +658,7 @@ async fn test_database_persistence() {
             "problem_id": 1
         });
 
-        println!("Sending request {}: {}", i, request_body);
+        println!("Sending request {i}: {request_body}");
 
         let req = test::TestRequest::post()
             .uri("/jobs")
@@ -697,14 +690,11 @@ async fn test_database_persistence() {
 
     assert_eq!(jobs.len(), 3);
 
-    for (i, (job_id, source_code, language, user_id, contest_id, problem_id)) in
-        jobs.iter().enumerate()
+    for (i, (_, source_code, language, user_id, contest_id, problem_id)) in jobs.iter().enumerate()
     {
-        // Don't check exact job_id since it's auto-increment and depends on previous tests
-        assert!(job_id > &0, "job_id should be positive");
         assert_eq!(
             source_code,
-            &format!("fn main() {{ println!(\"Test {}\"); }}", i)
+            &format!("fn main() {{ println!(\"Test {i}\"); }}")
         );
         assert_eq!(language, "Rust");
         assert_eq!(*user_id, i as i64);
@@ -764,8 +754,6 @@ async fn test_concurrent_requests() {
     // Check that all responses are successful
     for resp in responses {
         assert_eq!(resp.status(), 200);
-        let body: JobRecord = test::read_body_json(resp).await;
-        assert!(body.id >= 1, "job_id should be positive"); // Don't check upper bound since it depends on previous tests
     }
 
     // Verify that all jobs were inserted

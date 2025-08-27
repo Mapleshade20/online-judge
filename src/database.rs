@@ -630,7 +630,7 @@ pub async fn get_global_ranklist(
                     if user_score
                         .latest_submission_time
                         .as_ref()
-                        .map_or(true, |t| t < &job.created_time)
+                        .is_none_or(|t| t < &job.created_time)
                     {
                         user_score.latest_submission_time = Some(job.created_time.clone());
                     }

@@ -54,7 +54,7 @@ impl Sandbox {
         &self,
         case_idx: usize,
         case_config: &OneCaseConfig,
-        cache_dir: &PathBuf,
+        cache_dir: &Path,
     ) -> anyhow::Result<TestCaseResult> {
         let paths = self.setup_test_case_paths(case_idx, cache_dir)?;
 
@@ -93,7 +93,7 @@ impl Sandbox {
         if result.error.is_none() {
             result.stdout_content = fs::read_to_string(&paths.stdout)
                 .map_err(|e| {
-                    log::error!("Failed to read output file: {}", e);
+                    log::error!("Failed to read output file: {e}");
                     result.error = Some("System Error");
                     result.info = "Failed to read output file".to_string();
                     e
@@ -114,11 +114,11 @@ impl Sandbox {
     fn setup_test_case_paths(
         &self,
         case_idx: usize,
-        cache_dir: &PathBuf,
+        cache_dir: &Path,
     ) -> anyhow::Result<TestCasePaths> {
-        let stdin_name = format!("{}.in", case_idx);
-        let stdout_name = format!("{}.out", case_idx);
-        let meta_name = format!("{}.meta", case_idx);
+        let stdin_name = format!("{case_idx}.in");
+        let stdout_name = format!("{case_idx}.out");
+        let meta_name = format!("{case_idx}.meta");
 
         Ok(TestCasePaths {
             stdin: self.box_dir.join(stdin_name),
@@ -140,9 +140,9 @@ impl Sandbox {
         let wall_time_arg = format!("{:.4}", wall_time_limit.0 + 0.5);
         let memory_arg = format!("--cg-mem={}", memory_limit.0);
         let stack_arg = format!("--stack={}", memory_limit.0 / 2);
-        let processes_arg = format!("--processes={}", RUNTIME_PROCESSES);
-        let open_files_arg = format!("--open-files={}", RUNTIME_OPEN_FILES);
-        let fsize_arg = format!("--fsize={}", RUNTIME_FILE_SIZE);
+        let processes_arg = format!("--processes={RUNTIME_PROCESSES}");
+        let open_files_arg = format!("--open-files={RUNTIME_OPEN_FILES}");
+        let fsize_arg = format!("--fsize={RUNTIME_FILE_SIZE}");
         let meta_path = paths.meta.to_string_lossy();
         let stdin_name = paths.stdin.file_name().unwrap().to_string_lossy();
         let stdout_name = paths.stdout.file_name().unwrap().to_string_lossy();
@@ -223,7 +223,7 @@ impl Sandbox {
         problem: &OneProblemConfig,
     ) -> anyhow::Result<bool> {
         let expected_output = fs::read_to_string(&case_config.answer_file).map_err(|e| {
-            log::error!("Failed to read answer file: {}", e);
+            log::error!("Failed to read answer file: {e}");
             anyhow!("Failed to read answer file: {}", e)
         })?;
 

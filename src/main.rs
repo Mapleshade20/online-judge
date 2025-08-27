@@ -60,7 +60,7 @@ async fn main() -> std::io::Result<()> {
         server: server_config,
         problems: problem_config,
         languages: language_config,
-    } = cli.read_config().expect("Failed to load configuration");
+    } = cli.read_config()?;
 
     let db_path = db::get_db_path();
     if cli.flush_data {
@@ -109,10 +109,10 @@ async fn main() -> std::io::Result<()> {
             log::info!("Ctrl-c received, shutting down...");
         }
         res_server = server_task => {
-            log::error!("Server terminated unexpectedly: {:?}", res_server);
+            log::error!("Server terminated unexpectedly: {res_server:?}");
         }
         Some(res_worker) = workers.join_next() => {
-            log::error!("A worker terminated unexpectedly: {:?}", res_worker);
+            log::error!("A worker terminated unexpectedly: {res_worker:?}");
         }
     }
 
@@ -127,9 +127,9 @@ async fn main() -> std::io::Result<()> {
     while let Some(res) = workers.join_next().await {
         if let Err(e) = res {
             if e.is_panic() {
-                log::error!("Worker handle panicked: {:?}", e);
+                log::error!("Worker handle panicked: {e:?}");
             } else {
-                log::error!("Worker handle finished with error: {:?}", e);
+                log::error!("Worker handle finished with error: {e:?}");
             }
         }
     }

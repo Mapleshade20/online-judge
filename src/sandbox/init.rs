@@ -9,9 +9,9 @@ impl Sandbox {
             .ok_or_else(|| anyhow!("Unable to find user directory"))?;
 
         let cache_base_dir = proj_dirs.cache_dir();
-        fs::create_dir_all(&cache_base_dir)?;
+        fs::create_dir_all(cache_base_dir)?;
         fs::set_permissions(
-            &cache_base_dir,
+            cache_base_dir,
             fs::Permissions::from_mode(CACHE_DIR_PERMISSIONS),
         )?;
 

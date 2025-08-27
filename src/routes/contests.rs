@@ -44,30 +44,33 @@ pub async fn get_ranklist_handler(
         return HttpResponse::NotFound().json(ErrorResponseWithMessage {
             reason: "ERR_NOT_FOUND",
             code: 3,
-            message: format!("Contest {} not found.", contest_id),
+            message: format!("Contest {contest_id} not found."),
         });
     }
 
     // Validate scoring_rule
-    if let Some(ref rule) = query.scoring_rule {
-        if rule != "latest" && rule != "highest" {
-            return HttpResponse::BadRequest().json(ErrorResponseWithMessage {
-                reason: "ERR_INVALID_ARGUMENT",
-                code: 1,
-                message: format!("Invalid scoring_rule: {}", rule),
-            });
-        }
+    if let Some(ref rule) = query.scoring_rule
+        && rule != "latest"
+        && rule != "highest"
+    {
+        return HttpResponse::BadRequest().json(ErrorResponseWithMessage {
+            reason: "ERR_INVALID_ARGUMENT",
+            code: 1,
+            message: format!("Invalid scoring_rule: {rule}"),
+        });
     }
 
     // Validate tie_breaker
-    if let Some(ref breaker) = query.tie_breaker {
-        if breaker != "submission_time" && breaker != "submission_count" && breaker != "user_id" {
-            return HttpResponse::BadRequest().json(ErrorResponseWithMessage {
-                reason: "ERR_INVALID_ARGUMENT",
-                code: 1,
-                message: format!("Invalid tie_breaker: {}", breaker),
-            });
-        }
+    if let Some(ref breaker) = query.tie_breaker
+        && breaker != "submission_time"
+        && breaker != "submission_count"
+        && breaker != "user_id"
+    {
+        return HttpResponse::BadRequest().json(ErrorResponseWithMessage {
+            reason: "ERR_INVALID_ARGUMENT",
+            code: 1,
+            message: format!("Invalid tie_breaker: {breaker}"),
+        });
     }
 
     match db::get_global_ranklist(

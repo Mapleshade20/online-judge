@@ -5,6 +5,7 @@ use tokio::sync::Notify;
 
 use crate::routes::JobMessage;
 
+#[derive(Default)]
 pub struct JobQueue {
     queue: Mutex<VecDeque<JobMessage>>,
     notify: Notify,

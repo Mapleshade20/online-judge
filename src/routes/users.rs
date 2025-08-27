@@ -59,7 +59,7 @@ async fn update_user(user_id: u32, new_name: &str, pool: Arc<SqlitePool>) -> Htt
                     HttpResponse::BadRequest().json(ErrorResponseWithMessage {
                         reason: "ERR_INVALID_ARGUMENT",
                         code: 1,
-                        message: format!("User name '{}' already exists.", new_name),
+                        message: format!("User name '{new_name}' already exists."),
                     })
                 }
                 Ok(false) => {
@@ -89,7 +89,7 @@ async fn update_user(user_id: u32, new_name: &str, pool: Arc<SqlitePool>) -> Htt
             HttpResponse::NotFound().json(ErrorResponseWithMessage {
                 reason: "ERR_NOT_FOUND",
                 code: 3,
-                message: format!("User {} not found.", user_id),
+                message: format!("User {user_id} not found."),
             })
         }
         Err(e) => {
@@ -110,7 +110,7 @@ async fn create_user(name: &str, pool: Arc<SqlitePool>) -> HttpResponse {
             HttpResponse::BadRequest().json(ErrorResponseWithMessage {
                 reason: "ERR_INVALID_ARGUMENT",
                 code: 1,
-                message: format!("User name '{}' already exists.", name),
+                message: format!("User name '{name}' already exists."),
             })
         }
         Ok(false) => {
