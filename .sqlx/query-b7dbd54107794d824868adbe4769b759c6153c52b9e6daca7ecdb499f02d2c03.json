@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT case_index, result, time_us, memory_kb, info\n        FROM job_case\n        WHERE job_id = ?\n        ORDER BY case_index\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "case_index",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "result",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "time_us",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "memory_kb",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "info",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "b7dbd54107794d824868adbe4769b759c6153c52b9e6daca7ecdb499f02d2c03"
+}

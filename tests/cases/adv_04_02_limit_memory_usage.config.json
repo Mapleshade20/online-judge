@@ -12,7 +12,7 @@
       "cases": [
         {
           "time_limit": 2000000,
-          "memory_limit": 10485760,
+          "memory_limit": 51200,
           "score": 100,
           "input_file": "./tests/data/hello_world/1.in",
           "answer_file": "./tests/data/hello_world/1.ans"
@@ -27,7 +27,7 @@
       "command": [
         "rustc",
         "-C",
-        "opt-level=2",
+        "opt-level=0",
         "%INPUT%",
         "-o",
         "%OUTPUT%"

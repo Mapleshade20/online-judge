@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT 1 as \"exists_flag: i32\" FROM users WHERE name = ? AND id != ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists_flag: i32",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "2e15c34f0e3423265f2149b081c204c88f7296ec3e3ede323626484a57094b9d"
+}

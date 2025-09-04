@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE jobs \n        SET state = 'Queueing', result = 'Waiting', score = 0.0, updated_time = ?\n        WHERE id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2478531e553dccf4f3cf0622e178074449110d2cfb44c4fda8d5643ed271624f"
+}
