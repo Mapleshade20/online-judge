@@ -1,131 +1,53 @@
-mod compile;
-mod init;
-mod testing;
+mod isolate_runner;
+mod runner;
+mod simple_runner;
 
-use std::collections::HashMap;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Instant;
+// Re-export the trait and common types
+use isolate_runner::IsolateRunner;
+pub use runner::SandboxRunner;
+use simple_runner::SimpleRunner;
 
-use anyhow::{anyhow, bail};
-use chrono::Local;
+use std::path::PathBuf;
 
-use crate::config::{
-    JudgeType, MicroSecond, OneCaseConfig, OneLanguageConfig, OneProblemConfig, Second,
-};
-use crate::routes::JobRecord;
-
-// Sandbox configuration constants
-const COMPILE_TIME_LIMIT: f64 = 30.0; // seconds
-const COMPILE_MEMORY_LIMIT: u32 = 262144; // KB
-const COMPILE_PROCESSES: u32 = 10;
-const COMPILE_OPEN_FILES: u32 = 512;
-const COMPILE_FILE_SIZE: u32 = 65536; // KB
-
-const RUNTIME_PROCESSES: u32 = 4;
-const RUNTIME_OPEN_FILES: u32 = 30;
-const RUNTIME_FILE_SIZE: u32 = 16384; // KB
-
-// Sandbox cache directory permissions
-const CACHE_DIR_PERMISSIONS: u32 = 0o700;
+use anyhow::Result;
 
 /// Result of compilation process
 #[derive(Debug)]
-struct CompilationResult {
-    success: bool,
-    cache_dir: PathBuf,
-}
-
-/// Paths used during compilation
-#[derive(Debug)]
-struct CompilationPaths {
-    executable: PathBuf,
-    stdout: PathBuf,
-    meta: PathBuf,
-}
-
-/// Paths used during test case execution
-#[derive(Debug)]
-struct TestCasePaths {
-    stdin: PathBuf,
-    stdout: PathBuf,
-    meta: PathBuf,
+pub struct CompilationResult {
+    pub success: bool,
+    pub cache_dir: PathBuf,
 }
 
 /// Result of a single test case execution
 #[derive(Debug)]
-struct TestCaseResult {
-    time: u32,
-    memory: u32,
-    error: Option<&'static str>,
-    info: String,
-    stdout_content: String,
+pub struct TestCaseResult {
+    pub time: u32,
+    pub memory: u32,
+    pub error: Option<&'static str>,
+    pub info: String,
+    pub stdout_content: String,
 }
 
-/// A sandbox environment for compiling and executing code safely using isolate
+/// Creates a sandbox runner based on environment configuration
 ///
-/// The Sandbox provides an isolated environment where user-submitted code can be
-/// compiled and executed with resource limits and security restrictions.
-pub struct Sandbox {
-    /// Unique identifier for this sandbox instance
-    id: u8,
-    /// Path to the sandbox's working directory (inside isolate)
-    box_dir: PathBuf,
-    /// Path to the cache directory for temporary files
-    cache_dir: PathBuf,
-}
+/// If NO_ISOLATE environment variable is set to "1", creates a SimpleRunner
+/// that provides basic timeout functionality without security isolation.
+/// Otherwise, creates an IsolateRunner with full sandboxing capabilities.
+pub fn create_sandbox_runner(id: u8) -> Result<Box<dyn SandboxRunner>> {
+    let no_isolate = std::env::var("NO_ISOLATE").unwrap_or_default() == "1";
 
-impl Sandbox {
-    /// Creates a new sandbox instance with the given ID
-    pub fn build(id: u8) -> anyhow::Result<Self> {
-        let cache_dir = Self::setup_cache_directory(id)?;
-        let box_dir = Self::initialize_isolate_sandbox(id)?;
-
-        log::info!("Sandbox {id} initialized successfully");
-        Ok(Self {
-            id,
-            box_dir,
-            cache_dir,
-        })
-    }
-
-    /// Main entry point for running a job in the sandbox
-    pub fn run(
-        &self,
-        mut job: JobRecord,
-        problem: OneProblemConfig,
-        language: OneLanguageConfig,
-    ) -> anyhow::Result<JobRecord> {
-        self.reinit()?;
-
-        // Step 1: Compile the source code
-        let compilation_result = self.compile_source_code(&mut job, &language)?;
-        if !compilation_result.success {
-            return Ok(job);
-        }
-
-        // Step 2: Run test cases
-        self.run_test_cases(&mut job, &problem, compilation_result.cache_dir)?;
-
-        Ok(job)
+    if no_isolate {
+        log::info!("Creating SimpleRunner {id} (NO_ISOLATE mode)");
+        let runner = SimpleRunner::build(id)?;
+        Ok(Box::new(runner))
+    } else {
+        log::info!("Creating IsolateRunner {id} (full isolation mode)");
+        let runner = IsolateRunner::build(id)?;
+        Ok(Box::new(runner))
     }
 }
 
-impl Drop for Sandbox {
-    fn drop(&mut self) {
-        let out = Command::new("isolate")
-            .arg("-b")
-            .arg(self.id.to_string())
-            .arg("--cg")
-            .arg("--cleanup")
-            .output();
-
-        if out.is_ok_and(|c| c.status.success()) {
-            log::info!("Sandbox {} cleaned up", self.id);
-        } else {
-            log::error!("Sandbox {} failed to clean up", self.id);
-        }
-    }
+/// Check if we're in no-isolate mode
+pub fn is_no_isolate_mode() -> bool {
+    std::env::var("NO_ISOLATE").unwrap_or_default() == "1"
 }

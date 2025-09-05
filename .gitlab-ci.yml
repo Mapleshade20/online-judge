@@ -1,3 +1,6 @@
+variables:
+  NO_ISOLATE: 1
+
 stages:
   - build
   - test

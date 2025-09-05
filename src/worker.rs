@@ -7,7 +7,7 @@ use crate::config::{LanguageConfig, ProblemConfig};
 use crate::database as db;
 use crate::queue::JobQueue;
 use crate::routes::JobMessage;
-use crate::sandbox::Sandbox;
+use crate::sandbox::create_sandbox_runner;
 
 pub async fn worker(
     id: u8,
@@ -17,7 +17,7 @@ pub async fn worker(
     queue: Arc<JobQueue>,
     token: CancellationToken,
 ) -> anyhow::Result<()> {
-    let sandbox = Arc::new(Sandbox::build(id)?);
+    let sandbox = Arc::new(create_sandbox_runner(id)?);
     log::info!("Worker {id} initialized");
 
     loop {

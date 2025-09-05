@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use oj::config::{CliArgs, Config};
 use oj::database as db;
 use oj::queue::JobQueue;
+use oj::sandbox;
 use oj::web_server::build_server;
 use oj::worker::worker;
 
@@ -42,9 +43,19 @@ async fn main() -> std::io::Result<()> {
 
     env_logger::init_from_env(env_logger::Env::new().default_filter_or(log_level));
 
+    // Check execution mode
+    let no_isolate_mode = sandbox::is_no_isolate_mode();
+    if no_isolate_mode {
+        log::warn!("Running in NO_ISOLATE mode - security isolation disabled!");
+        log::warn!("This mode should only be used in trusted development environments.");
+    }
+
     // Check if required commands exist
-    if !check_command_exists("isolate") {
+    if !no_isolate_mode && !check_command_exists("isolate") {
         log::error!("Required command 'isolate' not found. Please check out installation guide.");
+        log::info!(
+            "Alternatively, set NO_ISOLATE=1 environment variable to run without isolation."
+        );
         std::process::exit(1);
     }
 
