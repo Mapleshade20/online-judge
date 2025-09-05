@@ -34,7 +34,11 @@ pub struct TestCaseResult {
 /// that provides basic timeout functionality without security isolation.
 /// Otherwise, creates an IsolateRunner with full sandboxing capabilities.
 pub fn create_sandbox_runner(id: u8) -> Result<Box<dyn SandboxRunner>> {
-    let no_isolate = std::env::var("NO_ISOLATE").unwrap_or_default() == "1";
+    let no_isolate = std::process::Command::new("which")
+        .arg("isolate")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
 
     if no_isolate {
         log::info!("Creating SimpleRunner {id} (NO_ISOLATE mode)");
@@ -45,9 +49,4 @@ pub fn create_sandbox_runner(id: u8) -> Result<Box<dyn SandboxRunner>> {
         let runner = IsolateRunner::build(id)?;
         Ok(Box::new(runner))
     }
-}
-
-/// Check if we're in no-isolate mode
-pub fn is_no_isolate_mode() -> bool {
-    std::env::var("NO_ISOLATE").unwrap_or_default() == "1"
 }

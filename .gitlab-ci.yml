@@ -5,15 +5,22 @@ stages:
   - build
   - test
 
+.install-sqlite: &install-sqlite
+  before_script:
+    - apt-get update -y
+    - apt-get install -y sqlite3 libsqlite3-dev
+
 build:
   stage: build
   image: jiegec/rust:1.89-bookworm-tuna
+  <<: *install-sqlite
   script:
     - cargo build
 
 basic-test:
   stage: test
   image: jiegec/rust:1.89-bookworm-tuna
+  <<: *install-sqlite
   script:
     - cargo test --test basic_requirements -- --test-threads=1
   artifacts:
@@ -27,6 +34,7 @@ advanced-test:
   stage: test
   image: jiegec/rust:1.89-bookworm-tuna
   allow_failure: true
+  <<: *install-sqlite
   script:
     - cargo test --test advanced_requirements -- --test-threads=1
   artifacts:

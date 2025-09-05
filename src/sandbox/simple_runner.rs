@@ -116,7 +116,7 @@ impl SandboxRunner for SimpleRunner {
             }
             Ok(Err(e)) => {
                 result.error = Some("System Error");
-                result.info = format!("Compilation process error: {}", e);
+                result.info = format!("Compilation process error: {e}");
             }
             Err(_) => {
                 result.error = Some("Time Limit Exceeded");
@@ -304,7 +304,7 @@ impl SimpleRunner {
         executable_path: &Path,
     ) -> Result<TestCaseResult> {
         let input_content = fs::read_to_string(&case_config.input_file)?;
-        let output_path = self.work_dir.join(format!("{}.out", case_idx));
+        let output_path = self.work_dir.join(format!("{case_idx}.out"));
 
         let start_time = Instant::now();
 
@@ -337,7 +337,7 @@ impl SimpleRunner {
             }
             Ok(Err(e)) => {
                 result.error = Some("System Error");
-                result.info = format!("Execution error: {}", e);
+                result.info = format!("Execution error: {e}");
             }
             Err(_) => {
                 result.error = Some("Time Limit Exceeded");
