@@ -214,15 +214,7 @@ impl SimpleRunner {
 
     /// Sets up the cache directory for the runner
     fn setup_cache_directory(id: u8) -> Result<PathBuf> {
-        use directories::ProjectDirs;
-
-        let proj_dirs = ProjectDirs::from("", "", "oj")
-            .ok_or_else(|| anyhow!("Unable to find user directory"))?;
-
-        let cache_base_dir = proj_dirs.cache_dir().join("simple");
-        fs::create_dir_all(&cache_base_dir)?;
-
-        let cache_dir = cache_base_dir.join(id.to_string());
+        let cache_dir = std::env::temp_dir().join("oj-cache").join(id.to_string());
         fs::create_dir_all(&cache_dir)?;
 
         Ok(cache_dir)
