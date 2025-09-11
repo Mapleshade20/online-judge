@@ -34,13 +34,14 @@ fn check_running_user() {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let cli = CliArgs::parse();
+    let log_level = if cli.verbose { "debug" } else { "info" };
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or(log_level));
+
     let n_threads = cli.threads;
     if n_threads == 0 {
-        panic!("The number of worker threads must not be 0");
+        log::error!("The number of worker threads must not be 0");
+        std::process::exit(1);
     }
-    let log_level = if cli.verbose { "debug" } else { "info" };
-
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or(log_level));
 
     // Check execution mode
     let no_isolate_mode = !check_command_exists("isolate");
@@ -61,15 +62,22 @@ async fn main() -> std::io::Result<()> {
         server: server_config,
         problems: problem_config,
         languages: language_config,
-    } = cli.read_config()?;
+    } = cli.read_config().unwrap_or_else(|e| {
+        log::error!("Failed to read configuration: {e}");
+        std::process::exit(1);
+    });
 
-    let db_path = db::get_db_path();
+    let db_path = db::get_db_path().unwrap_or_else(|| {
+        log::error!("Failed to determine database path");
+        std::process::exit(1);
+    });
     if cli.flush_data {
         db::remove_db(&db_path);
     }
-    let db_pool = db::init_db(&db_path)
-        .await
-        .expect("Failed to initialize database");
+    let db_pool = db::init_db(&db_path).await.unwrap_or_else(|e| {
+        log::error!("Failed to initialize database: {e}");
+        std::process::exit(1);
+    });
 
     let problem_config = Arc::new(problem_config);
     let language_config = Arc::new(language_config);
@@ -98,7 +106,10 @@ async fn main() -> std::io::Result<()> {
         db_pool,
         job_queue,
     )
-    .expect("Failed to build server");
+    .unwrap_or_else(|e| {
+        log::error!("Failed to start web server: {e}");
+        std::process::exit(1);
+    });
 
     let server_handle = server.handle();
     let server_task = actix_web::rt::spawn(server);

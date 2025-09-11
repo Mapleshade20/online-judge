@@ -14,15 +14,15 @@ use crate::routes::{
 
 const DATABASE_NAME: &str = "oj.sqlite3";
 
-pub fn get_db_path() -> PathBuf {
+pub fn get_db_path() -> Option<PathBuf> {
     use directories::ProjectDirs;
 
-    let proj_dirs = ProjectDirs::from("", "", "oj").expect("Unable to find user directory");
+    let proj_dirs = ProjectDirs::from("", "", "oj")?;
     let data_dir = proj_dirs.data_local_dir();
 
-    fs::create_dir_all(data_dir).expect("Failed to create local data dir");
+    fs::create_dir_all(data_dir).ok()?;
 
-    data_dir.join(DATABASE_NAME)
+    Some(data_dir.join(DATABASE_NAME))
 }
 
 pub async fn init_db(db_path: impl AsRef<Path>) -> sqlx::Result<SqlitePool> {
@@ -449,7 +449,7 @@ pub async fn fetch_jobs_by_query(
     let mut jobs = Vec::new();
 
     for (id,) in job_ids {
-        jobs.push(fetch_job(id, pool.clone()).await.unwrap());
+        jobs.push(fetch_job(id, pool.clone()).await?);
     }
     Ok(jobs)
 }

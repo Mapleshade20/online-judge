@@ -402,7 +402,7 @@ impl IsolateRunner {
                 .unwrap_or_default();
         }
 
-        // Move the stdout file to the cache directory  TODO: optional
+        // Move the stdout file to the cache directory
         fs::rename(
             &paths.stdout,
             cache_dir.join(paths.stdout.file_name().unwrap()),
